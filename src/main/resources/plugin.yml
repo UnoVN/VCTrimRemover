@@ -1,0 +1,11 @@
+name: AntiArmorTrim
+version: 1.0.0
+main: com.server.antitrim.AntiArmorTrim
+api-version: '1.21'
+author: LeThienNhan
+description: Chặn và xóa giáp có Armor Trim nếu không có quyền LuckPerms.
+
+permissions:
+  armortrim.bypass:
+    description: Cho phép sở hữu, mặc và ép giáp có Trim.
+    default: op
