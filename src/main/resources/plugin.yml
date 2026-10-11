@@ -5,7 +5,18 @@ api-version: '1.21'
 author: LeThienNhan
 description: Chặn và xóa giáp có Armor Trim nếu không có quyền LuckPerms.
 
+commands:
+  antitrim:
+    description: Lệnh chính của plugin AntiArmorTrim
+    aliases: [at, vctrim]
+    permission: armortrim.admin
+    permission-message: "&c[AntiArmorTrim] Bạn không có quyền thực hiện lệnh này!"
+
 permissions:
   armortrim.bypass:
     description: Cho phép sở hữu, mặc và ép giáp có Trim.
     default: op
+  armortrim.admin:
+    description: Cho phép sử dụng lệnh reload config.
+    default: op
+    
