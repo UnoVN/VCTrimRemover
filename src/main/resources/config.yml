@@ -1,4 +1,6 @@
-# Thông báo gửi khi thu hồi giáp có Trim
+# Cấu hình thông báo hiển thị cho người chơi
 messages:
   remove-trim: "&c[Hệ Thống] Bạn không có quyền sở hữu hoặc sử dụng giáp có Trim! Trang bị đã bị thu hồi."
   deny-smith: "&c[Hệ Thống] Bạn không có quyền ép Trim vào trang bị!"
+  reload-success: "&a[AntiArmorTrim] Đã tải lại config thành công!"
+  no-permission: "&c[AntiArmorTrim] Bạn không có quyền thực hiện lệnh này!"
