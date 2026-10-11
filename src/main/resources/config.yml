@@ -1,0 +1,4 @@
+# Thông báo gửi khi thu hồi giáp có Trim
+messages:
+  remove-trim: "&c[Hệ Thống] Bạn không có quyền sở hữu hoặc sử dụng giáp có Trim! Trang bị đã bị thu hồi."
+  deny-smith: "&c[Hệ Thống] Bạn không có quyền ép Trim vào trang bị!"
