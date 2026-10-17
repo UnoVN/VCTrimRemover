@@ -1,6 +1,48 @@
-# Cấu hình thông báo hiển thị cho người chơi
+# +-------------------------------------------------------------------+ #
+# |                   AntiArmorTrim Configuration                     | #
+# |                  Theme: Catppuccin Mocha Palette                  | #
+# +-------------------------------------------------------------------+ #
+
+luckperms:
+  # Automatically scan LuckPerms groups for the "armortrim.bypass" permission
+  auto-detect-rank: true
+  # Fallback rank name if auto-detect is disabled or no group is found
+  fallback-rank: "<#f9e2af><bold>VIP</bold>"
+
+gui:
+  main-title: "<#6c7086>✦ <#cba6f7><bold>Armor Trim Studio</bold> <#6c7086>✦"
+  slot-title: "<#6c7086>✦ <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot> <#6c7086>✦"
+
+  # Lore appended when the player HAS "armortrim.bypass" permission
+  has-permission-lore:
+    - ""
+    - "<#a6e3a1>✔ <bold>UNLOCKED</bold>"
+    - "<#a6adc8>▸ <#cdd6f4>Left-Click to apply this option."
+
+  # Lore appended when the player DOES NOT HAVE permission
+  no-permission-lore:
+    - ""
+    - "<#f38ba8>✖ <bold>LOCKED</bold>"
+    - "<#a6adc8>▸ <#cdd6f4>Required Rank: <rank>"
+
 messages:
-  remove-trim: "&c[Hệ Thống] Bạn không có quyền sở hữu hoặc sử dụng giáp có Trim! Trang bị đã bị thu hồi."
-  deny-smith: "&c[Hệ Thống] Bạn không có quyền ép Trim vào trang bị!"
-  reload-success: "&a[AntiArmorTrim] Đã tải lại config thành công!"
-  no-permission: "&c[AntiArmorTrim] Bạn không có quyền thực hiện lệnh này!"
+  # Prefix using Catppuccin Mauve, Overlay0, and clean icon object
+  prefix: "<#6c7086>[<#cba6f7>✦ <bold>Trim</bold><#6c7086>] "
+
+  # Enforcement messages
+  remove-trim: "<#f38ba8>✘ <#cdd6f4>You do not have permission to own or wear trimmed armor. The item has been removed."
+  deny-smith: "<#f38ba8>✘ <#cdd6f4>You are not allowed to apply armor trims at a Smithing Table!"
+  no-permission-gui: "<#f38ba8>✘ <#cdd6f4>You cannot equip armor trims! Required rank: <rank>"
+
+  # Editor feedback messages
+  trim-selected: "<#a6e3a1>✔ <#cdd6f4>Updated <#74c7ec><slot><#cdd6f4> trim to <#f9e2af><pattern> <#6c7086>(<#fab387><material><#6c7086>)<#cdd6f4>."
+  trim-applied-all: "<#a6e3a1>★ <#cdd6f4>Synchronized <#f9e2af><pattern> <#6c7086>(<#fab387><material><#6c7086>)<#cdd6f4> across all <#cba6f7>4 armor pieces<#cdd6f4>!"
+  trim-cleared: "<#fab387>♻ <#cdd6f4>Disabled auto-trim and cleared active trim for <#74c7ec><slot><#cdd6f4>."
+  trim-missing-selection: "<#f38ba8>✘ <#cdd6f4>Please select both a <#89dceb>Pattern<#cdd6f4> and a <#fab387>Material<#cdd6f4> first!"
+
+  # Admin & System messages
+  reload-success: "<#a6e3a1>✔ <#cdd6f4>Configuration reloaded successfully!"
+  no-permission: "<#f38ba8>✘ <#cdd6f4>You do not have permission to execute this command."
+  only-players: "<#f38ba8>✘ <#cdd6f4>This command can only be used in-game."
+  usage: "<#fab387>ℹ <#cdd6f4>Usage: <#f9e2af>/<label> reload"
+  
