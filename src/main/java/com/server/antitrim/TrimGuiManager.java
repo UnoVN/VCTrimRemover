@@ -1,7 +1,9 @@
 package com.server.antitrim;
 
+import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -9,9 +11,11 @@ import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -30,13 +34,24 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TrimGuiManager implements Listener {
 
     private final AntiArmorTrim plugin;
+    private final Set<UUID> pendingRenamePlayers = ConcurrentHashMap.newKeySet();
 
     private static final Map<String, PatternOption> PATTERNS = new LinkedHashMap<>();
     private static final Map<String, MaterialOption> MATERIALS = new LinkedHashMap<>();
+
+    public enum MenuType {
+        DECOR_HUB,
+        TRIM_MAIN,
+        TRIM_SLOT,
+        RENAME_STUDIO
+    }
 
     static {
         // All 18 Minecraft 1.21 Trim Patterns
@@ -84,8 +99,12 @@ public class TrimGuiManager implements Listener {
         this.plugin = plugin;
     }
 
+    public boolean canUseRename(Player player) {
+        return player.hasPermission(AntiArmorTrim.RENAME_PERM) || player.hasPermission(AntiArmorTrim.BYPASS_PERM);
+    }
+
     // =========================================================================
-    // PERSISTENT DATA CONTAINER MANAGEMENT
+    // PERSISTENT DATA CONTAINER MANAGEMENT (ARMOR TRIMS)
     // =========================================================================
     private NamespacedKey getPatternKey(EquipmentSlot slot) {
         return new NamespacedKey(plugin, "trim_pattern_" + slot.name());
@@ -154,13 +173,207 @@ public class TrimGuiManager implements Listener {
     }
 
     // =========================================================================
-    // MAIN MENU (/trim)
+    // 1. DECORATION HUB MENU (/decor)
+    // =========================================================================
+    public void openDecorHub(Player player) {
+        String rawTitle = plugin.getConfig().getString("gui.decor-title", "<#6c7086>✦ <#cba6f7><bold>Decoration Studio</bold> <#6c7086>✦");
+        Component title = plugin.parse(rawTitle);
+
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null);
+        Inventory inv = Bukkit.createInventory(holder, 27, title);
+        holder.setInventory(inv);
+
+        ItemStack border = createFiller(Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < 27; i++) {
+            inv.setItem(i, border);
+        }
+
+        // Slot 11: Armor Trim Studio Button
+        ItemStack trimBtn = new ItemStack(Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
+        ItemMeta trimMeta = trimBtn.getItemMeta();
+        if (trimMeta != null) {
+            trimMeta.displayName(plugin.createIconBadge("✦", "#cba6f7")
+                    .append(plugin.parse("<#cba6f7><bold>Armor Trim Studio</bold>")));
+            trimMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Command: <#89dceb>/trim"));
+            lore.add(plugin.parse("<#a6adc8>Customize automatic armor patterns"));
+            lore.add(plugin.parse("<#a6adc8>and material colors for your gear."));
+            appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
+            trimMeta.lore(lore);
+            trimBtn.setItemMeta(trimMeta);
+        }
+        inv.setItem(11, trimBtn);
+
+        // Slot 15: Item Rename Studio Button
+        ItemStack renameBtn = new ItemStack(Material.NAME_TAG);
+        ItemMeta renameMeta = renameBtn.getItemMeta();
+        if (renameMeta != null) {
+            renameMeta.displayName(plugin.createIconBadge("✎", "#74c7ec")
+                    .append(plugin.parse("<#74c7ec><bold>Item Rename Studio</bold>")));
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Command: <#89dceb>/rename"));
+            lore.add(plugin.parse("<#a6adc8>Rename the item in your main hand"));
+            lore.add(plugin.parse("<#a6adc8>with Catppuccin hex colors & gradients."));
+            appendPermissionLore(player, lore, AntiArmorTrim.RENAME_PERM);
+            renameMeta.lore(lore);
+            renameBtn.setItemMeta(renameMeta);
+        }
+        inv.setItem(15, renameBtn);
+
+        player.openInventory(inv);
+    }
+
+    // =========================================================================
+    // 2. ITEM RENAME STUDIO MENU (/rename)
+    // =========================================================================
+    public void openRenameMenu(Player player) {
+        String rawTitle = plugin.getConfig().getString("gui.rename-title", "<#6c7086>✦ <#cba6f7><bold>Item Rename Studio</bold> <#6c7086>✦");
+        Component title = plugin.parse(rawTitle);
+
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null);
+        Inventory inv = Bukkit.createInventory(holder, 27, title);
+        holder.setInventory(inv);
+
+        ItemStack border = createFiller(Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < 27; i++) {
+            inv.setItem(i, border);
+        }
+
+        // Slot 11: Color Code & Formatting Guide Icon
+        ItemStack guideItem = new ItemStack(Material.KNOWLEDGE_BOOK);
+        ItemMeta guideMeta = guideItem.getItemMeta();
+        if (guideMeta != null) {
+            guideMeta.displayName(plugin.createIconBadge("📖", "#f9e2af")
+                    .append(plugin.parse("<#f9e2af><bold>Formatting & Color Guide</bold>")));
+            guideMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#a6adc8>Supported color & style formats:"));
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#cba6f7><bold>1. Hex & Gradient Codes:</bold>"));
+            lore.add(plugin.parse(" <#6c7086>▸ <#cdd6f4>&#cba6f7Sword <#6c7086>or <#cdd6f4><#cba6f7>Sword"));
+            lore.add(plugin.parse(" <#6c7086>▸ <#cdd6f4><gradient:#cba6f7:#89dceb>Text</gradient>"));
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#cba6f7><bold>2. Catppuccin Mocha Swatches:</bold>"));
+            lore.add(plugin.parse(" <#6c7086>▪ <#cba6f7>Mauve: &#cba6f7   <#89dceb>Sky: &#89dceb"));
+            lore.add(plugin.parse(" <#6c7086>▪ <#a6e3a1>Green: &#a6e3a1   <#f9e2af>Yellow: &#f9e2af"));
+            lore.add(plugin.parse(" <#6c7086>▪ <#fab387>Peach: &#fab387   <#f38ba8>Red: &#f38ba8"));
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#cba6f7><bold>3. Legacy & Style Codes:</bold>"));
+            lore.add(plugin.parse(" <#6c7086>▪ <#a6e3a1>&a <#89dceb>&b <#f38ba8>&c <#f5c2e7>&d <#f9e2af>&e <#cdd6f4>&f"));
+            lore.add(plugin.parse(" <#6c7086>▪ <#cdd6f4>&l <bold>Bold</bold> <#6c7086>| <#cdd6f4>&n <underlined>Underline</underlined> <#6c7086>| <#cdd6f4>&o <italic>Italic</italic>"));
+            guideMeta.lore(lore);
+            guideItem.setItemMeta(guideMeta);
+        }
+        inv.setItem(11, guideItem);
+
+        // Slot 13: Held Item Live Preview
+        ItemStack handItem = player.getInventory().getItemInMainHand();
+        if (handItem == null || handItem.getType().isAir()) {
+            ItemStack emptyIcon = new ItemStack(Material.BARRIER);
+            ItemMeta emptyMeta = emptyIcon.getItemMeta();
+            if (emptyMeta != null) {
+                emptyMeta.displayName(plugin.createIconBadge("✘", "#f38ba8")
+                        .append(plugin.parse("<#f38ba8><bold>No Item in Main Hand</bold>")));
+                List<Component> lore = new ArrayList<>();
+                lore.add(plugin.parse("<#a6adc8>Hold an item in your main hand"));
+                lore.add(plugin.parse("<#a6adc8>to preview and rename it here."));
+                emptyMeta.lore(lore);
+                emptyIcon.setItemMeta(emptyMeta);
+            }
+            inv.setItem(13, emptyIcon);
+        } else {
+            ItemStack preview = handItem.clone();
+            ItemMeta previewMeta = preview.getItemMeta();
+            if (previewMeta != null) {
+                List<Component> lore = previewMeta.hasLore() && previewMeta.lore() != null
+                        ? new ArrayList<>(previewMeta.lore())
+                        : new ArrayList<>();
+                lore.add(Component.empty());
+                lore.add(plugin.parse("<#6c7086>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"));
+                lore.add(plugin.parse("<#89dceb>✦ <bold>Target Item in Main Hand</bold>"));
+                previewMeta.lore(lore);
+                preview.setItemMeta(previewMeta);
+            }
+            inv.setItem(13, preview);
+        }
+
+        // Slot 15: Click to Rename Item Button
+        ItemStack renameBtn = new ItemStack(Material.NAME_TAG);
+        ItemMeta renameMeta = renameBtn.getItemMeta();
+        if (renameMeta != null) {
+            renameMeta.displayName(plugin.createIconBadge("✎", "#a6e3a1")
+                    .append(plugin.parse("<#a6e3a1><bold>Rename Held Item</bold>")));
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#a6adc8>Click to enter a new custom name"));
+            lore.add(plugin.parse("<#a6adc8>for the item in your main hand."));
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#89dceb>▸ Left-Click: <#cdd6f4>Type new name in chat"));
+            lore.add(plugin.parse("<#fab387>▸ Right-Click: <#cdd6f4>Reset to default name"));
+            appendPermissionLore(player, lore, AntiArmorTrim.RENAME_PERM);
+            renameMeta.lore(lore);
+            renameBtn.setItemMeta(renameMeta);
+        }
+        inv.setItem(15, renameBtn);
+
+        // Slot 18: Back to Decoration Hub
+        inv.setItem(18, createBackButton("<#f9e2af><bold>Back to Decoration Hub</bold>", "<#a6adc8>Return to the /decor menu."));
+
+        player.openInventory(inv);
+    }
+
+    /**
+     * Applies a custom name to the item in the player's main hand.
+     */
+    public void applyItemRename(Player player, String rawInput) {
+        if (!canUseRename(player)) {
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.RENAME_PERM));
+            return;
+        }
+
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (item == null || item.getType().isAir()) {
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            player.sendMessage(plugin.getMessage("rename-no-item"));
+            return;
+        }
+
+        Component parsedName = plugin.parse(rawInput);
+        String plainVisible = PlainTextComponentSerializer.plainText().serialize(parsedName);
+        int maxLength = plugin.getConfig().getInt("rename.max-length", 48);
+
+        if (plainVisible.length() > maxLength) {
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+            player.sendMessage(plugin.getMessage("rename-too-long",
+                    Placeholder.unparsed("max", String.valueOf(maxLength))));
+            return;
+        }
+
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return;
+
+        meta.displayName(parsedName);
+        item.setItemMeta(meta);
+        player.getInventory().setItemInMainHand(item);
+
+        player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("rename-success",
+                Placeholder.component("name", parsedName)));
+    }
+
+    // =========================================================================
+    // 3. ARMOR TRIM MAIN MENU (/trim) & SLOT SUB-MENU
     // =========================================================================
     public void openMainMenu(Player player) {
         String rawTitle = plugin.getConfig().getString("gui.main-title", "<#6c7086>✦ <#cba6f7><bold>Armor Trim Studio</bold> <#6c7086>✦");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null);
         Inventory inv = Bukkit.createInventory(holder, 27, title);
         holder.setInventory(inv);
 
@@ -173,6 +386,9 @@ public class TrimGuiManager implements Listener {
         inv.setItem(12, createMainSlotIcon(player, EquipmentSlot.CHEST, Material.NETHERITE_CHESTPLATE));
         inv.setItem(14, createMainSlotIcon(player, EquipmentSlot.LEGS, Material.NETHERITE_LEGGINGS));
         inv.setItem(16, createMainSlotIcon(player, EquipmentSlot.FEET, Material.NETHERITE_BOOTS));
+
+        // Slot 18: Back to Decoration Hub
+        inv.setItem(18, createBackButton("<#f9e2af><bold>Back to Decoration Hub</bold>", "<#a6adc8>Return to the /decor menu."));
 
         player.openInventory(inv);
     }
@@ -204,21 +420,18 @@ public class TrimGuiManager implements Listener {
             }
         }
 
-        appendPermissionLore(player, lore);
+        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
-    // =========================================================================
-    // SLOT SUB-MENU (PATTERN & MATERIAL SELECTOR)
-    // =========================================================================
     public void openSlotMenu(Player player, EquipmentSlot slot) {
         String slotName = getSlotEnglishName(slot);
         String rawTitle = plugin.getConfig().getString("gui.slot-title", "<#6c7086>✦ <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot> <#6c7086>✦");
         Component title = plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName));
 
-        TrimMenuHolder holder = new TrimMenuHolder(slot);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
         holder.setInventory(inv);
 
@@ -250,18 +463,7 @@ public class TrimGuiManager implements Listener {
         }
 
         // 4. Navigation & Action Buttons
-        // Back Button (Slot 45)
-        ItemStack backBtn = new ItemStack(Material.ARROW);
-        ItemMeta backMeta = backBtn.getItemMeta();
-        if (backMeta != null) {
-            backMeta.displayName(plugin.createIconBadge("←", "#f9e2af")
-                    .append(plugin.parse("<#f9e2af><bold>Back to Main Menu</bold>")));
-            List<Component> backLore = new ArrayList<>();
-            backLore.add(plugin.parse("<#a6adc8>Return to the armor slot selector."));
-            backMeta.lore(backLore);
-            backBtn.setItemMeta(backMeta);
-        }
-        inv.setItem(45, backBtn);
+        inv.setItem(45, createBackButton("<#f9e2af><bold>Back to Trim Studio</bold>", "<#a6adc8>Return to the armor slot selector."));
 
         // Clear / Disable Auto-Trim Button (Slot 49)
         ItemStack clearBtn = new ItemStack(Material.BARRIER);
@@ -272,7 +474,7 @@ public class TrimGuiManager implements Listener {
             List<Component> clearLore = new ArrayList<>();
             clearLore.add(plugin.parse("<#a6adc8>Disable automatic trim application"));
             clearLore.add(plugin.parse("<#a6adc8>and remove trim from your equipped piece."));
-            appendPermissionLore(player, clearLore);
+            appendPermissionLore(player, clearLore, AntiArmorTrim.BYPASS_PERM);
             clearMeta.lore(clearLore);
             clearBtn.setItemMeta(clearMeta);
         }
@@ -287,13 +489,26 @@ public class TrimGuiManager implements Listener {
             List<Component> allLore = new ArrayList<>();
             allLore.add(plugin.parse("<#a6adc8>Copy this slot's Pattern & Material"));
             allLore.add(plugin.parse("<#a6adc8>to Helmet, Chestplate, Leggings & Boots."));
-            appendPermissionLore(player, allLore);
+            appendPermissionLore(player, allLore, AntiArmorTrim.BYPASS_PERM);
             allMeta.lore(allLore);
             applyAllBtn.setItemMeta(allMeta);
         }
         inv.setItem(53, applyAllBtn);
 
         player.openInventory(inv);
+    }
+
+    private ItemStack createBackButton(String titleMini, String descMini) {
+        ItemStack backBtn = new ItemStack(Material.ARROW);
+        ItemMeta backMeta = backBtn.getItemMeta();
+        if (backMeta != null) {
+            backMeta.displayName(plugin.createIconBadge("←", "#f9e2af").append(plugin.parse(titleMini)));
+            List<Component> backLore = new ArrayList<>();
+            backLore.add(plugin.parse(descMini));
+            backMeta.lore(backLore);
+            backBtn.setItemMeta(backMeta);
+        }
+        return backBtn;
     }
 
     private ItemStack createPatternIcon(Player player, PatternOption opt, boolean selected) {
@@ -317,7 +532,7 @@ public class TrimGuiManager implements Listener {
         if (selected) {
             lore.add(plugin.parse("<#a6e3a1>▸ Currently Selected"));
         }
-        appendPermissionLore(player, lore);
+        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
@@ -343,19 +558,20 @@ public class TrimGuiManager implements Listener {
         if (selected) {
             lore.add(plugin.parse("<#a6e3a1>▸ Currently Selected"));
         }
-        appendPermissionLore(player, lore);
+        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
-    private void appendPermissionLore(Player player, List<Component> lore) {
-        String path = player.hasPermission(AntiArmorTrim.BYPASS_PERM)
-                ? "gui.has-permission-lore"
-                : "gui.no-permission-lore";
+    private void appendPermissionLore(Player player, List<Component> lore, String requiredPerm) {
+        boolean hasPerm = requiredPerm.equals(AntiArmorTrim.RENAME_PERM)
+                ? canUseRename(player)
+                : player.hasPermission(requiredPerm);
+        String path = hasPerm ? "gui.has-permission-lore" : "gui.no-permission-lore";
         List<String> rawLines = plugin.getConfig().getStringList(path);
         for (String line : rawLines) {
-            lore.add(plugin.parse(line));
+            lore.add(plugin.parseWithPerm(line, requiredPerm));
         }
     }
 
@@ -390,7 +606,7 @@ public class TrimGuiManager implements Listener {
     }
 
     // =========================================================================
-    // GUI INTERACTION HANDLERS
+    // GUI INTERACTION & CHAT RENAME LISTENERS
     // =========================================================================
     @EventHandler
     public void onGuiClick(InventoryClickEvent event) {
@@ -401,8 +617,73 @@ public class TrimGuiManager implements Listener {
         int rawSlot = event.getRawSlot();
         if (rawSlot < 0 || rawSlot >= event.getInventory().getSize()) return;
 
-        // 1. Main Menu Navigation
-        if (holder.getSlotType() == null) {
+        MenuType menuType = holder.getMenuType();
+
+        // 1. DECORATION HUB (/decor)
+        if (menuType == MenuType.DECOR_HUB) {
+            if (rawSlot == 11) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+                openMainMenu(player);
+            } else if (rawSlot == 15) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+                openRenameMenu(player);
+            }
+            return;
+        }
+
+        // 2. ITEM RENAME STUDIO (/rename)
+        if (menuType == MenuType.RENAME_STUDIO) {
+            if (rawSlot == 18) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                openDecorHub(player);
+                return;
+            }
+
+            if (rawSlot == 15) {
+                if (!canUseRename(player)) {
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+                    player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.RENAME_PERM));
+                    return;
+                }
+
+                ItemStack handItem = player.getInventory().getItemInMainHand();
+                if (handItem == null || handItem.getType().isAir()) {
+                    player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+                    player.sendMessage(plugin.getMessage("rename-no-item"));
+                    return;
+                }
+
+                // Right-click to reset item name
+                if (event.isRightClick()) {
+                    ItemMeta meta = handItem.getItemMeta();
+                    if (meta != null) {
+                        meta.displayName(null);
+                        handItem.setItemMeta(meta);
+                        player.getInventory().setItemInMainHand(handItem);
+                    }
+                    player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+                    player.sendMessage(plugin.getMessage("rename-reset"));
+                    openRenameMenu(player);
+                    return;
+                }
+
+                // Left-click to prompt chat rename
+                player.closeInventory();
+                pendingRenamePlayers.add(player.getUniqueId());
+                player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+                player.sendMessage(plugin.getMessage("rename-prompt"));
+            }
+            return;
+        }
+
+        // 3. ARMOR TRIM MAIN MENU (/trim)
+        if (menuType == MenuType.TRIM_MAIN) {
+            if (rawSlot == 18) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                openDecorHub(player);
+                return;
+            }
+
             EquipmentSlot targetSlot = switch (rawSlot) {
                 case 10 -> EquipmentSlot.HEAD;
                 case 12 -> EquipmentSlot.CHEST;
@@ -417,10 +698,8 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // 2. Sub-Menu Actions
+        // 4. ARMOR TRIM SLOT SUB-MENU
         EquipmentSlot armorSlot = holder.getSlotType();
-
-        // Back Button (Always Accessible)
         if (rawSlot == 45) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
             openMainMenu(player);
@@ -436,7 +715,7 @@ public class TrimGuiManager implements Listener {
 
         if (!player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-            player.sendMessage(plugin.getMessage("no-permission-gui"));
+            player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.BYPASS_PERM));
             return;
         }
 
@@ -534,12 +813,46 @@ public class TrimGuiManager implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onChatRenameInput(AsyncChatEvent event) {
+        Player player = event.getPlayer();
+        if (!pendingRenamePlayers.remove(player.getUniqueId())) {
+            return;
+        }
+
+        event.setCancelled(true);
+        String rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            if (rawInput.equalsIgnoreCase("cancel")) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+                player.sendMessage(plugin.getMessage("rename-cancelled"));
+                openRenameMenu(player);
+                return;
+            }
+            applyItemRename(player, rawInput);
+            openRenameMenu(player);
+        });
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        pendingRenamePlayers.remove(event.getPlayer().getUniqueId());
+    }
+
     public static class TrimMenuHolder implements InventoryHolder {
+        private final MenuType menuType;
         private final EquipmentSlot slotType;
         private Inventory inventory;
 
-        public TrimMenuHolder(EquipmentSlot slotType) {
+        public TrimMenuHolder(MenuType menuType, EquipmentSlot slotType) {
+            this.menuType = menuType;
             this.slotType = slotType;
+        }
+
+        public MenuType getMenuType() {
+            return menuType;
         }
 
         public EquipmentSlot getSlotType() {
@@ -558,5 +871,5 @@ public class TrimGuiManager implements Listener {
 
     private record PatternOption(String key, String name, Material icon) {}
     private record MaterialOption(String key, String name, String hexColor, Material icon) {}
-          }
-      
+                                                    }
+                                 
