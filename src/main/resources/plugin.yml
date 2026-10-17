@@ -1,22 +1,25 @@
 name: AntiArmorTrim
-version: 1.0.0
+version: 2.1.0
 main: com.server.antitrim.AntiArmorTrim
 api-version: '1.21'
 author: LeThienNhan
-description: Chặn và xóa giáp có Armor Trim nếu không có quyền LuckPerms.
+softdepend: [LuckPerms]
+description: Armor Trim restriction and Catppuccin Auto-Trim GUI Studio.
 
 commands:
   antitrim:
-    description: Lệnh chính của plugin AntiArmorTrim
+    description: Admin command for AntiArmorTrim
     aliases: [at, vctrim]
     permission: armortrim.admin
-    permission-message: "&c[AntiArmorTrim] Bạn không có quyền thực hiện lệnh này!"
+  trim:
+    description: Open the Armor Trim Studio GUI
+    aliases: [armortrim, trims]
 
 permissions:
   armortrim.bypass:
-    description: Cho phép sở hữu, mặc và ép giáp có Trim.
+    description: Allows owning, wearing, and using the Auto-Trim GUI Studio.
     default: op
   armortrim.admin:
-    description: Cho phép sử dụng lệnh reload config.
+    description: Allows reloading the plugin configuration.
     default: op
     
