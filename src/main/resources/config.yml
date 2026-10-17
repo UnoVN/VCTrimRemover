@@ -4,20 +4,22 @@
 # +-------------------------------------------------------------------+ #
 
 luckperms:
-  # Automatically scan LuckPerms groups for the "armortrim.bypass" permission
+  # Automatically scan LuckPerms groups for the required permission
   auto-detect-rank: true
   # Fallback rank name if auto-detect is disabled or no group is found
   fallback-rank: "<#f9e2af><bold>VIP</bold>"
 
 gui:
+  decor-title: "<#6c7086>✦ <#cba6f7><bold>Decoration Studio</bold> <#6c7086>✦"
   main-title: "<#6c7086>✦ <#cba6f7><bold>Armor Trim Studio</bold> <#6c7086>✦"
   slot-title: "<#6c7086>✦ <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot> <#6c7086>✦"
+  rename-title: "<#6c7086>✦ <#cba6f7><bold>Item Rename Studio</bold> <#6c7086>✦"
 
-  # Lore appended when the player HAS "armortrim.bypass" permission
+  # Lore appended when the player HAS permission
   has-permission-lore:
     - ""
     - "<#a6e3a1>✔ <bold>UNLOCKED</bold>"
-    - "<#a6adc8>▸ <#cdd6f4>Left-Click to apply this option."
+    - "<#a6adc8>▸ <#cdd6f4>Click to use this feature."
 
   # Lore appended when the player DOES NOT HAVE permission
   no-permission-lore:
@@ -25,20 +27,32 @@ gui:
     - "<#f38ba8>✖ <bold>LOCKED</bold>"
     - "<#a6adc8>▸ <#cdd6f4>Required Rank: <rank>"
 
+rename:
+  # Maximum visible character length for custom item names
+  max-length: 48
+
 messages:
-  # Prefix using Catppuccin Mauve, Overlay0, and clean icon object
-  prefix: "<#6c7086>[<#cba6f7>✦ <bold>Trim</bold><#6c7086>] "
+  # Prefix using Catppuccin Mauve & Overlay0
+  prefix: "<#6c7086>[<#cba6f7>✦ <bold>Decor</bold><#6c7086>] "
 
   # Enforcement messages
   remove-trim: "<#f38ba8>✘ <#cdd6f4>You do not have permission to own or wear trimmed armor. The item has been removed."
   deny-smith: "<#f38ba8>✘ <#cdd6f4>You are not allowed to apply armor trims at a Smithing Table!"
-  no-permission-gui: "<#f38ba8>✘ <#cdd6f4>You cannot equip armor trims! Required rank: <rank>"
+  no-permission-gui: "<#f38ba8>✘ <#cdd6f4>You do not have access to this feature! Required rank: <rank>"
 
-  # Editor feedback messages
+  # Trim Studio feedback messages
   trim-selected: "<#a6e3a1>✔ <#cdd6f4>Updated <#74c7ec><slot><#cdd6f4> trim to <#f9e2af><pattern> <#6c7086>(<#fab387><material><#6c7086>)<#cdd6f4>."
   trim-applied-all: "<#a6e3a1>★ <#cdd6f4>Synchronized <#f9e2af><pattern> <#6c7086>(<#fab387><material><#6c7086>)<#cdd6f4> across all <#cba6f7>4 armor pieces<#cdd6f4>!"
   trim-cleared: "<#fab387>♻ <#cdd6f4>Disabled auto-trim and cleared active trim for <#74c7ec><slot><#cdd6f4>."
   trim-missing-selection: "<#f38ba8>✘ <#cdd6f4>Please select both a <#89dceb>Pattern<#cdd6f4> and a <#fab387>Material<#cdd6f4> first!"
+
+  # Rename Studio feedback messages
+  rename-prompt: "<#89dceb>✎ <#cdd6f4>Type the new name for your item in chat, or type <#f38ba8>cancel<#cdd6f4> to abort."
+  rename-cancelled: "<#fab387>ℹ <#cdd6f4>Item rename operation cancelled."
+  rename-no-item: "<#f38ba8>✘ <#cdd6f4>You must hold an item in your <#f9e2af>Main Hand<#cdd6f4> to rename it!"
+  rename-too-long: "<#f38ba8>✘ <#cdd6f4>That name is too long! Maximum allowed length is <#f9e2af><max><#cdd6f4> characters."
+  rename-success: "<#a6e3a1>✔ <#cdd6f4>Successfully renamed your item to: <name>"
+  rename-reset: "<#fab387>♻ <#cdd6f4>Reset your held item's name back to default."
 
   # Admin & System messages
   reload-success: "<#a6e3a1>✔ <#cdd6f4>Configuration reloaded successfully!"
