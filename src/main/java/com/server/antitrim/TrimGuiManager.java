@@ -1,5 +1,6 @@
 package com.server.antitrim;
 
+import com.google.common.collect.HashMultimap;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
@@ -30,6 +31,7 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +47,7 @@ public class TrimGuiManager implements Listener {
 
     private static final Map<String, PatternOption> PATTERNS = new LinkedHashMap<>();
     private static final Map<String, MaterialOption> MATERIALS = new LinkedHashMap<>();
+    private static final Method SET_ITEM_MODEL_METHOD;
 
     public enum MenuType {
         DECOR_HUB,
@@ -54,6 +57,13 @@ public class TrimGuiManager implements Listener {
     }
 
     static {
+        Method m = null;
+        try {
+            m = ItemMeta.class.getMethod("setItemModel", NamespacedKey.class);
+        } catch (NoSuchMethodException ignored) {
+        }
+        SET_ITEM_MODEL_METHOD = m;
+
         // All 18 Minecraft 1.21 Trim Patterns
         addPattern("sentry", "Sentry", Material.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE);
         addPattern("dune", "Dune", Material.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -101,6 +111,41 @@ public class TrimGuiManager implements Listener {
 
     public boolean canUseRename(Player player) {
         return player.hasPermission(AntiArmorTrim.RENAME_PERM) || player.hasPermission(AntiArmorTrim.BYPASS_PERM);
+    }
+
+    /**
+     * Creates a clean GUI ItemStack that displays the exact texture of visualMaterial
+     * without ANY hardcoded vanilla tooltips (such as "Smithing Template / Applies to / Ingredients").
+     */
+    private ItemStack createCleanIconStack(Material visualMaterial) {
+        if (SET_ITEM_MODEL_METHOD != null) {
+            ItemStack stack = new ItemStack(Material.PAPER);
+            ItemMeta meta = stack.getItemMeta();
+            if (meta != null) {
+                try {
+                    SET_ITEM_MODEL_METHOD.invoke(meta, visualMaterial.getKey());
+                    hideAllVanillaTooltips(meta);
+                    stack.setItemMeta(meta);
+                    return stack;
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        ItemStack fallback = new ItemStack(visualMaterial);
+        ItemMeta meta = fallback.getItemMeta();
+        if (meta != null) {
+            hideAllVanillaTooltips(meta);
+            fallback.setItemMeta(meta);
+        }
+        return fallback;
+    }
+
+    /**
+     * Strips all vanilla attributes, armor trim hover lines, and extra item flags.
+     */
+    private void hideAllVanillaTooltips(ItemMeta meta) {
+        meta.setAttributeModifiers(HashMultimap.create());
+        meta.addItemFlags(ItemFlag.values());
     }
 
     // =========================================================================
@@ -176,7 +221,7 @@ public class TrimGuiManager implements Listener {
     // 1. DECORATION HUB MENU (/decor)
     // =========================================================================
     public void openDecorHub(Player player) {
-        String rawTitle = plugin.getConfig().getString("gui.decor-title", "<#6c7086>✦ <#cba6f7><bold>Decoration Studio</bold> <#6c7086>✦");
+        String rawTitle = plugin.getConfig().getString("gui.decor-title", "<#cba6f7><bold>Decoration Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
         TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null);
@@ -189,35 +234,32 @@ public class TrimGuiManager implements Listener {
         }
 
         // Slot 11: Armor Trim Studio Button
-        ItemStack trimBtn = new ItemStack(Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
+        ItemStack trimBtn = createCleanIconStack(Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
         ItemMeta trimMeta = trimBtn.getItemMeta();
         if (trimMeta != null) {
-            trimMeta.displayName(plugin.createIconBadge("✦", "#cba6f7")
-                    .append(plugin.parse("<#cba6f7><bold>Armor Trim Studio</bold>")));
-            trimMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            String sprite = plugin.getItemSpriteTag(Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
+            trimMeta.displayName(plugin.parse(sprite + " <#cba6f7><bold>Armor Trim Studio</bold>"));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Command: <#89dceb>/trim"));
-            lore.add(plugin.parse("<#a6adc8>Customize automatic armor patterns"));
-            lore.add(plugin.parse("<#a6adc8>and material colors for your gear."));
-            appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
+            lore.add(plugin.parse("<#a6adc8>Customize automatic armor trims"));
+            lore.add(plugin.parse("<#a6adc8>and materials for your gear."));
+            appendLockedLoreIfNeeded(player, lore, AntiArmorTrim.BYPASS_PERM);
             trimMeta.lore(lore);
             trimBtn.setItemMeta(trimMeta);
         }
         inv.setItem(11, trimBtn);
 
         // Slot 15: Item Rename Studio Button
-        ItemStack renameBtn = new ItemStack(Material.NAME_TAG);
+        ItemStack renameBtn = createCleanIconStack(Material.NAME_TAG);
         ItemMeta renameMeta = renameBtn.getItemMeta();
         if (renameMeta != null) {
-            renameMeta.displayName(plugin.createIconBadge("✎", "#74c7ec")
-                    .append(plugin.parse("<#74c7ec><bold>Item Rename Studio</bold>")));
+            String sprite = plugin.getItemSpriteTag(Material.NAME_TAG);
+            renameMeta.displayName(plugin.parse(sprite + " <#74c7ec><bold>Item Rename Studio</bold>"));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Command: <#89dceb>/rename"));
             lore.add(plugin.parse("<#a6adc8>Rename the item in your main hand"));
-            lore.add(plugin.parse("<#a6adc8>with Catppuccin hex colors & gradients."));
-            appendPermissionLore(player, lore, AntiArmorTrim.RENAME_PERM);
+            lore.add(plugin.parse("<#a6adc8>using Minecraft color & format codes."));
+            appendLockedLoreIfNeeded(player, lore, AntiArmorTrim.RENAME_PERM);
             renameMeta.lore(lore);
             renameBtn.setItemMeta(renameMeta);
         }
@@ -230,7 +272,8 @@ public class TrimGuiManager implements Listener {
     // 2. ITEM RENAME STUDIO MENU (/rename)
     // =========================================================================
     public void openRenameMenu(Player player) {
-        String rawTitle = plugin.getConfig().getString("gui.rename-title", "<#6c7086>✦ <#cba6f7><bold>Item Rename Studio</bold> <#6c7086>✦");
+        String rawTitle = plugin.getConfig().getString("gui.rename-title",
+                "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
         TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null);
@@ -242,29 +285,24 @@ public class TrimGuiManager implements Listener {
             inv.setItem(i, border);
         }
 
-        // Slot 11: Color Code & Formatting Guide Icon
-        ItemStack guideItem = new ItemStack(Material.KNOWLEDGE_BOOK);
+        // Slot 11: Standard Minecraft Color & Format Guide
+        ItemStack guideItem = createCleanIconStack(Material.KNOWLEDGE_BOOK);
         ItemMeta guideMeta = guideItem.getItemMeta();
         if (guideMeta != null) {
-            guideMeta.displayName(plugin.createIconBadge("📖", "#f9e2af")
-                    .append(plugin.parse("<#f9e2af><bold>Formatting & Color Guide</bold>")));
-            guideMeta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+            String sprite = plugin.getItemSpriteTag(Material.KNOWLEDGE_BOOK);
+            guideMeta.displayName(plugin.parse(sprite + " <#f9e2af><bold>Minecraft Format Guide</bold>"));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(plugin.parse("<#a6adc8>Supported color & style formats:"));
+            lore.add(plugin.parse("<#cba6f7>Color Codes:"));
+            lore.add(plugin.parse("<black>&0 Black   <dark_blue>&1 Dark Blue   <dark_green>&2 Dark Green   <dark_aqua>&3 Dark Aqua"));
+            lore.add(plugin.parse("<dark_red>&4 Dark Red   <dark_purple>&5 Purple   <gold>&6 Gold   <#a6adc8>&7 Gray"));
+            lore.add(plugin.parse("<#6c7086>&8 Dark Gray   <#89b4fa>&9 Blue   <#a6e3a1>&a Green   <#89dceb>&b Aqua"));
+            lore.add(plugin.parse("<#f38ba8>&c Red   <#f5c2e7>&d Pink   <#f9e2af>&e Yellow   <#cdd6f4>&f White"));
             lore.add(Component.empty());
-            lore.add(plugin.parse("<#cba6f7><bold>1. Hex & Gradient Codes:</bold>"));
-            lore.add(plugin.parse(" <#6c7086>▸ <#cdd6f4>&#cba6f7Sword <#6c7086>or <#cdd6f4><#cba6f7>Sword"));
-            lore.add(plugin.parse(" <#6c7086>▸ <#cdd6f4><gradient:#cba6f7:#89dceb>Text</gradient>"));
-            lore.add(Component.empty());
-            lore.add(plugin.parse("<#cba6f7><bold>2. Catppuccin Mocha Swatches:</bold>"));
-            lore.add(plugin.parse(" <#6c7086>▪ <#cba6f7>Mauve: &#cba6f7   <#89dceb>Sky: &#89dceb"));
-            lore.add(plugin.parse(" <#6c7086>▪ <#a6e3a1>Green: &#a6e3a1   <#f9e2af>Yellow: &#f9e2af"));
-            lore.add(plugin.parse(" <#6c7086>▪ <#fab387>Peach: &#fab387   <#f38ba8>Red: &#f38ba8"));
-            lore.add(Component.empty());
-            lore.add(plugin.parse("<#cba6f7><bold>3. Legacy & Style Codes:</bold>"));
-            lore.add(plugin.parse(" <#6c7086>▪ <#a6e3a1>&a <#89dceb>&b <#f38ba8>&c <#f5c2e7>&d <#f9e2af>&e <#cdd6f4>&f"));
-            lore.add(plugin.parse(" <#6c7086>▪ <#cdd6f4>&l <bold>Bold</bold> <#6c7086>| <#cdd6f4>&n <underlined>Underline</underlined> <#6c7086>| <#cdd6f4>&o <italic>Italic</italic>"));
+            lore.add(plugin.parse("<#cba6f7>Format Codes:"));
+            lore.add(plugin.parse("<#cdd6f4>&k <obfuscated>Magic</obfuscated> <#6c7086>(Obfuscated)   <#cdd6f4>&l <bold>Bold</bold>"));
+            lore.add(plugin.parse("<#cdd6f4>&m <strikethrough>Strike</strikethrough>   <#cdd6f4>&n <underlined>Underline</underlined>"));
+            lore.add(plugin.parse("<#cdd6f4>&o <italic>Italic</italic>   <#cdd6f4>&r Reset"));
             guideMeta.lore(lore);
             guideItem.setItemMeta(guideMeta);
         }
@@ -273,14 +311,14 @@ public class TrimGuiManager implements Listener {
         // Slot 13: Held Item Live Preview
         ItemStack handItem = player.getInventory().getItemInMainHand();
         if (handItem == null || handItem.getType().isAir()) {
-            ItemStack emptyIcon = new ItemStack(Material.BARRIER);
+            ItemStack emptyIcon = createCleanIconStack(Material.BARRIER);
             ItemMeta emptyMeta = emptyIcon.getItemMeta();
             if (emptyMeta != null) {
-                emptyMeta.displayName(plugin.createIconBadge("✘", "#f38ba8")
-                        .append(plugin.parse("<#f38ba8><bold>No Item in Main Hand</bold>")));
+                String sprite = plugin.getItemSpriteTag(Material.BARRIER);
+                emptyMeta.displayName(plugin.parse(sprite + " <#f38ba8><bold>No Item in Main Hand</bold>"));
                 List<Component> lore = new ArrayList<>();
                 lore.add(plugin.parse("<#a6adc8>Hold an item in your main hand"));
-                lore.add(plugin.parse("<#a6adc8>to preview and rename it here."));
+                lore.add(plugin.parse("<#a6adc8>to preview and rename it."));
                 emptyMeta.lore(lore);
                 emptyIcon.setItemMeta(emptyMeta);
             }
@@ -289,46 +327,34 @@ public class TrimGuiManager implements Listener {
             ItemStack preview = handItem.clone();
             ItemMeta previewMeta = preview.getItemMeta();
             if (previewMeta != null) {
-                List<Component> lore = previewMeta.hasLore() && previewMeta.lore() != null
-                        ? new ArrayList<>(previewMeta.lore())
-                        : new ArrayList<>();
-                lore.add(Component.empty());
-                lore.add(plugin.parse("<#6c7086>⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯"));
-                lore.add(plugin.parse("<#89dceb>✦ <bold>Target Item in Main Hand</bold>"));
-                previewMeta.lore(lore);
+                hideAllVanillaTooltips(previewMeta);
                 preview.setItemMeta(previewMeta);
             }
             inv.setItem(13, preview);
         }
 
         // Slot 15: Click to Rename Item Button
-        ItemStack renameBtn = new ItemStack(Material.NAME_TAG);
+        ItemStack renameBtn = createCleanIconStack(Material.NAME_TAG);
         ItemMeta renameMeta = renameBtn.getItemMeta();
         if (renameMeta != null) {
-            renameMeta.displayName(plugin.createIconBadge("✎", "#a6e3a1")
-                    .append(plugin.parse("<#a6e3a1><bold>Rename Held Item</bold>")));
+            String sprite = plugin.getItemSpriteTag(Material.NAME_TAG);
+            renameMeta.displayName(plugin.parse(sprite + " <#a6e3a1><bold>Rename Held Item</bold>"));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(plugin.parse("<#a6adc8>Click to enter a new custom name"));
-            lore.add(plugin.parse("<#a6adc8>for the item in your main hand."));
-            lore.add(Component.empty());
-            lore.add(plugin.parse("<#89dceb>▸ Left-Click: <#cdd6f4>Type new name in chat"));
-            lore.add(plugin.parse("<#fab387>▸ Right-Click: <#cdd6f4>Reset to default name"));
-            appendPermissionLore(player, lore, AntiArmorTrim.RENAME_PERM);
+            lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Enter new name in chat"));
+            lore.add(plugin.parse("<#fab387>Right-Click: <#cdd6f4>Reset to default name"));
+            appendLockedLoreIfNeeded(player, lore, AntiArmorTrim.RENAME_PERM);
             renameMeta.lore(lore);
             renameBtn.setItemMeta(renameMeta);
         }
         inv.setItem(15, renameBtn);
 
         // Slot 18: Back to Decoration Hub
-        inv.setItem(18, createBackButton("<#f9e2af><bold>Back to Decoration Hub</bold>", "<#a6adc8>Return to the /decor menu."));
+        inv.setItem(18, createBackButton("<#f9e2af><bold>Back</bold>"));
 
         player.openInventory(inv);
     }
 
-    /**
-     * Applies a custom name to the item in the player's main hand.
-     */
     public void applyItemRename(Player player, String rawInput) {
         if (!canUseRename(player)) {
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
@@ -370,7 +396,7 @@ public class TrimGuiManager implements Listener {
     // 3. ARMOR TRIM MAIN MENU (/trim) & SLOT SUB-MENU
     // =========================================================================
     public void openMainMenu(Player player) {
-        String rawTitle = plugin.getConfig().getString("gui.main-title", "<#6c7086>✦ <#cba6f7><bold>Armor Trim Studio</bold> <#6c7086>✦");
+        String rawTitle = plugin.getConfig().getString("gui.main-title", "<#cba6f7><bold>Armor Trim Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
         TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null);
@@ -387,8 +413,7 @@ public class TrimGuiManager implements Listener {
         inv.setItem(14, createMainSlotIcon(player, EquipmentSlot.LEGS, Material.NETHERITE_LEGGINGS));
         inv.setItem(16, createMainSlotIcon(player, EquipmentSlot.FEET, Material.NETHERITE_BOOTS));
 
-        // Slot 18: Back to Decoration Hub
-        inv.setItem(18, createBackButton("<#f9e2af><bold>Back to Decoration Hub</bold>", "<#a6adc8>Return to the /decor menu."));
+        inv.setItem(18, createBackButton("<#f9e2af><bold>Back</bold>"));
 
         player.openInventory(inv);
     }
@@ -398,10 +423,11 @@ public class TrimGuiManager implements Listener {
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
+        hideAllVanillaTooltips(meta);
+
         String slotName = getSlotEnglishName(slot);
-        Component badge = plugin.createIconBadge("◆", "#74c7ec");
-        meta.displayName(badge.append(plugin.parse("<#74c7ec><bold>" + slotName + " Trim</bold>")));
-        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+        String slotSprite = plugin.getItemSpriteTag(iconMat);
+        meta.displayName(plugin.parse(slotSprite + " <#74c7ec><bold>" + slotName + " Trim</bold>"));
 
         String patternKey = getSavedPatternKey(player, slot);
         String materialKey = getSavedMaterialKey(player, slot);
@@ -410,8 +436,15 @@ public class TrimGuiManager implements Listener {
         MaterialOption mOpt = materialKey != null ? MATERIALS.get(materialKey) : null;
 
         List<Component> lore = new ArrayList<>();
-        lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Pattern: " + (pOpt != null ? "<#89dceb>" + pOpt.name : "<#f38ba8>None")));
-        lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Material: " + (mOpt != null ? "<" + mOpt.hexColor + ">" + mOpt.name : "<#f38ba8>None")));
+        String patternDisplay = pOpt != null
+                ? plugin.getItemSpriteTag(pOpt.icon) + " <#89dceb>" + pOpt.name
+                : "<#6c7086>None";
+        String materialDisplay = mOpt != null
+                ? plugin.getItemSpriteTag(mOpt.icon) + " <" + mOpt.hexColor + ">" + mOpt.name
+                : "<#6c7086>None";
+
+        lore.add(plugin.parse("<#a6adc8>Pattern: " + patternDisplay));
+        lore.add(plugin.parse("<#a6adc8>Material: " + materialDisplay));
 
         if (meta instanceof ArmorMeta armorMeta && pOpt != null && mOpt != null) {
             ArmorTrim previewTrim = buildArmorTrim(patternKey, materialKey);
@@ -420,7 +453,9 @@ public class TrimGuiManager implements Listener {
             }
         }
 
-        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
+        boolean configured = (pOpt != null && mOpt != null);
+        appendSelectionOrLockedLore(player, lore, AntiArmorTrim.BYPASS_PERM, configured);
+
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
@@ -428,8 +463,13 @@ public class TrimGuiManager implements Listener {
 
     public void openSlotMenu(Player player, EquipmentSlot slot) {
         String slotName = getSlotEnglishName(slot);
-        String rawTitle = plugin.getConfig().getString("gui.slot-title", "<#6c7086>✦ <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot> <#6c7086>✦");
-        Component title = plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName));
+        Material previewMat = getPreviewMaterial(slot);
+        String slotSprite = plugin.getItemSpriteTag(previewMat);
+
+        String rawTitle = plugin.getConfig().getString("gui.slot-title", "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>");
+        Component title = plugin.parse(rawTitle,
+                Placeholder.unparsed("slot", slotName),
+                Placeholder.parsed("slot_icon", slotSprite));
 
         TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
@@ -451,7 +491,7 @@ public class TrimGuiManager implements Listener {
         }
 
         // 2. Live Armor Preview Icon (Slot 22)
-        inv.setItem(22, createMainSlotIcon(player, slot, getPreviewMaterial(slot)));
+        inv.setItem(22, createMainSlotIcon(player, slot, previewMat));
 
         // 3. Materials (Slots 29->33 and 38->42)
         int[] matSlots = {29, 30, 31, 32, 33, 38, 39, 40, 41, 42};
@@ -463,33 +503,32 @@ public class TrimGuiManager implements Listener {
         }
 
         // 4. Navigation & Action Buttons
-        inv.setItem(45, createBackButton("<#f9e2af><bold>Back to Trim Studio</bold>", "<#a6adc8>Return to the armor slot selector."));
+        inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
         // Clear / Disable Auto-Trim Button (Slot 49)
-        ItemStack clearBtn = new ItemStack(Material.BARRIER);
+        ItemStack clearBtn = createCleanIconStack(Material.BARRIER);
         ItemMeta clearMeta = clearBtn.getItemMeta();
         if (clearMeta != null) {
-            clearMeta.displayName(plugin.createIconBadge("♻", "#f38ba8")
-                    .append(plugin.parse("<#f38ba8><bold>Reset & Clear Trim</bold>")));
+            String sprite = plugin.getItemSpriteTag(Material.BARRIER);
+            clearMeta.displayName(plugin.parse(sprite + " <#f38ba8><bold>Reset & Clear Trim</bold>"));
             List<Component> clearLore = new ArrayList<>();
-            clearLore.add(plugin.parse("<#a6adc8>Disable automatic trim application"));
-            clearLore.add(plugin.parse("<#a6adc8>and remove trim from your equipped piece."));
-            appendPermissionLore(player, clearLore, AntiArmorTrim.BYPASS_PERM);
+            clearLore.add(plugin.parse("<#a6adc8>Disable auto-trim and clear active trim."));
+            appendLockedLoreIfNeeded(player, clearLore, AntiArmorTrim.BYPASS_PERM);
             clearMeta.lore(clearLore);
             clearBtn.setItemMeta(clearMeta);
         }
         inv.setItem(49, clearBtn);
 
         // Apply to All 4 Pieces Button (Slot 53)
-        ItemStack applyAllBtn = new ItemStack(Material.NETHER_STAR);
+        ItemStack applyAllBtn = createCleanIconStack(Material.NETHER_STAR);
         ItemMeta allMeta = applyAllBtn.getItemMeta();
         if (allMeta != null) {
-            allMeta.displayName(plugin.createIconBadge("★", "#cba6f7")
-                    .append(plugin.parse("<#cba6f7><bold>Sync to All 4 Pieces</bold>")));
+            String sprite = plugin.getItemSpriteTag(Material.NETHER_STAR);
+            allMeta.displayName(plugin.parse(sprite + " <#cba6f7><bold>Sync to All 4 Pieces</bold>"));
             List<Component> allLore = new ArrayList<>();
             allLore.add(plugin.parse("<#a6adc8>Copy this slot's Pattern & Material"));
             allLore.add(plugin.parse("<#a6adc8>to Helmet, Chestplate, Leggings & Boots."));
-            appendPermissionLore(player, allLore, AntiArmorTrim.BYPASS_PERM);
+            appendLockedLoreIfNeeded(player, allLore, AntiArmorTrim.BYPASS_PERM);
             allMeta.lore(allLore);
             applyAllBtn.setItemMeta(allMeta);
         }
@@ -498,80 +537,92 @@ public class TrimGuiManager implements Listener {
         player.openInventory(inv);
     }
 
-    private ItemStack createBackButton(String titleMini, String descMini) {
-        ItemStack backBtn = new ItemStack(Material.ARROW);
+    private ItemStack createBackButton(String titleMini) {
+        ItemStack backBtn = createCleanIconStack(Material.ARROW);
         ItemMeta backMeta = backBtn.getItemMeta();
         if (backMeta != null) {
-            backMeta.displayName(plugin.createIconBadge("←", "#f9e2af").append(plugin.parse(titleMini)));
-            List<Component> backLore = new ArrayList<>();
-            backLore.add(plugin.parse(descMini));
-            backMeta.lore(backLore);
+            String sprite = plugin.getItemSpriteTag(Material.ARROW);
+            backMeta.displayName(plugin.parse(sprite + " " + titleMini));
             backBtn.setItemMeta(backMeta);
         }
         return backBtn;
     }
 
     private ItemStack createPatternIcon(Player player, PatternOption opt, boolean selected) {
-        ItemStack item = new ItemStack(opt.icon);
+        ItemStack item = createCleanIconStack(opt.icon);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        Component prefixIcon = selected
-                ? plugin.createIconBadge("✔", "#a6e3a1")
-                : plugin.createIconBadge("✦", "#89dceb");
+        String sprite = plugin.getItemSpriteTag(opt.icon);
         String nameColor = selected ? "<#a6e3a1><bold>" : "<#89dceb>";
-        meta.displayName(prefixIcon.append(plugin.parse(nameColor + opt.name + " Trim")));
+        meta.displayName(plugin.parse(sprite + " " + nameColor + opt.name + " Trim"));
 
-        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
         if (selected) {
             meta.setEnchantmentGlintOverride(true);
         }
 
         List<Component> lore = new ArrayList<>();
-        lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Category: <#b4befe>Armor Pattern"));
-        if (selected) {
-            lore.add(plugin.parse("<#a6e3a1>▸ Currently Selected"));
-        }
-        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
+        appendSelectionOrLockedLore(player, lore, AntiArmorTrim.BYPASS_PERM, selected);
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
     private ItemStack createMaterialIcon(Player player, MaterialOption opt, boolean selected) {
-        ItemStack item = new ItemStack(opt.icon);
+        ItemStack item = createCleanIconStack(opt.icon);
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return item;
 
-        Component prefixIcon = selected
-                ? plugin.createIconBadge("✔", "#a6e3a1")
-                : plugin.createIconBadge("◈", opt.hexColor);
+        String sprite = plugin.getItemSpriteTag(opt.icon);
         String nameColor = selected ? "<#a6e3a1><bold>" : "<" + opt.hexColor + ">";
-        meta.displayName(prefixIcon.append(plugin.parse(nameColor + opt.name + " Material")));
+        meta.displayName(plugin.parse(sprite + " " + nameColor + opt.name + " Material"));
 
         if (selected) {
             meta.setEnchantmentGlintOverride(true);
         }
 
         List<Component> lore = new ArrayList<>();
-        lore.add(plugin.parse("<#6c7086>▪ <#a6adc8>Color Swatch: <" + opt.hexColor + ">" + opt.name));
-        if (selected) {
-            lore.add(plugin.parse("<#a6e3a1>▸ Currently Selected"));
-        }
-        appendPermissionLore(player, lore, AntiArmorTrim.BYPASS_PERM);
+        appendSelectionOrLockedLore(player, lore, AntiArmorTrim.BYPASS_PERM, selected);
         meta.lore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
-    private void appendPermissionLore(Player player, List<Component> lore, String requiredPerm) {
+    /**
+     * When the player HAS permission: only shows Selected / Unselected status (never shows UNLOCKED).
+     * When the player DOES NOT have permission: shows the Locked & Required Rank lore.
+     */
+    private void appendSelectionOrLockedLore(Player player, List<Component> lore, String requiredPerm, boolean selected) {
         boolean hasPerm = requiredPerm.equals(AntiArmorTrim.RENAME_PERM)
                 ? canUseRename(player)
                 : player.hasPermission(requiredPerm);
-        String path = hasPerm ? "gui.has-permission-lore" : "gui.no-permission-lore";
-        List<String> rawLines = plugin.getConfig().getStringList(path);
-        for (String line : rawLines) {
-            lore.add(plugin.parseWithPerm(line, requiredPerm));
+
+        if (hasPerm) {
+            String statusRaw = selected
+                    ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
+                    : plugin.getConfig().getString("gui.unselected-status", "<#6c7086>○ Unselected");
+            lore.add(plugin.parse(statusRaw));
+        } else {
+            List<String> rawLines = plugin.getConfig().getStringList("gui.no-permission-lore");
+            for (String line : rawLines) {
+                lore.add(plugin.parseWithPerm(line, requiredPerm));
+            }
+        }
+    }
+
+    /**
+     * For action buttons: shows nothing extra if player has permission, or Locked lore if not.
+     */
+    private void appendLockedLoreIfNeeded(Player player, List<Component> lore, String requiredPerm) {
+        boolean hasPerm = requiredPerm.equals(AntiArmorTrim.RENAME_PERM)
+                ? canUseRename(player)
+                : player.hasPermission(requiredPerm);
+
+        if (!hasPerm) {
+            List<String> rawLines = plugin.getConfig().getStringList("gui.no-permission-lore");
+            for (String line : rawLines) {
+                lore.add(plugin.parseWithPerm(line, requiredPerm));
+            }
         }
     }
 
@@ -579,6 +630,7 @@ public class TrimGuiManager implements Listener {
         ItemStack item = new ItemStack(mat);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
+            hideAllVanillaTooltips(meta);
             meta.displayName(Component.text(" "));
             item.setItemMeta(meta);
         }
@@ -653,7 +705,6 @@ public class TrimGuiManager implements Listener {
                     return;
                 }
 
-                // Right-click to reset item name
                 if (event.isRightClick()) {
                     ItemMeta meta = handItem.getItemMeta();
                     if (meta != null) {
@@ -667,7 +718,6 @@ public class TrimGuiManager implements Listener {
                     return;
                 }
 
-                // Left-click to prompt chat rename
                 player.closeInventory();
                 pendingRenamePlayers.add(player.getUniqueId());
                 player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
@@ -722,6 +772,7 @@ public class TrimGuiManager implements Listener {
         String currentPattern = getSavedPatternKey(player, armorSlot);
         String currentMaterial = getSavedMaterialKey(player, armorSlot);
         String slotName = getSlotEnglishName(armorSlot);
+        String slotIcon = plugin.getItemSpriteTag(getPreviewMaterial(armorSlot));
 
         // Select Pattern (Slots 0 -> 17)
         if (rawSlot < 18) {
@@ -737,8 +788,11 @@ public class TrimGuiManager implements Listener {
                 player.playSound(player.getLocation(), Sound.BLOCK_SMITHING_TABLE_USE, 1f, 1.2f);
                 player.sendMessage(plugin.getMessage("trim-selected",
                         Placeholder.unparsed("slot", slotName),
+                        Placeholder.parsed("slot_icon", slotIcon),
                         Placeholder.unparsed("pattern", chosenPattern.name),
-                        Placeholder.unparsed("material", matOpt.name)));
+                        Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(chosenPattern.icon)),
+                        Placeholder.unparsed("material", matOpt.name),
+                        Placeholder.parsed("material_icon", plugin.getItemSpriteTag(matOpt.icon))));
                 openSlotMenu(player, armorSlot);
             }
             return;
@@ -760,8 +814,11 @@ public class TrimGuiManager implements Listener {
                     player.playSound(player.getLocation(), Sound.BLOCK_SMITHING_TABLE_USE, 1f, 1.4f);
                     player.sendMessage(plugin.getMessage("trim-selected",
                             Placeholder.unparsed("slot", slotName),
+                            Placeholder.parsed("slot_icon", slotIcon),
                             Placeholder.unparsed("pattern", patOpt.name),
-                            Placeholder.unparsed("material", chosenMaterial.name)));
+                            Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(patOpt.icon)),
+                            Placeholder.unparsed("material", chosenMaterial.name),
+                            Placeholder.parsed("material_icon", plugin.getItemSpriteTag(chosenMaterial.icon))));
                     openSlotMenu(player, armorSlot);
                 }
                 return;
@@ -778,7 +835,9 @@ public class TrimGuiManager implements Listener {
                 player.getInventory().setItem(armorSlot, worn);
             }
             player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
-            player.sendMessage(plugin.getMessage("trim-cleared", Placeholder.unparsed("slot", slotName)));
+            player.sendMessage(plugin.getMessage("trim-cleared",
+                    Placeholder.unparsed("slot", slotName),
+                    Placeholder.parsed("slot_icon", slotIcon)));
             openSlotMenu(player, armorSlot);
             return;
         }
@@ -801,7 +860,9 @@ public class TrimGuiManager implements Listener {
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f);
             player.sendMessage(plugin.getMessage("trim-applied-all",
                     Placeholder.unparsed("pattern", patOpt != null ? patOpt.name : currentPattern),
-                    Placeholder.unparsed("material", matOpt != null ? matOpt.name : currentMaterial)));
+                    Placeholder.parsed("pattern_icon", patOpt != null ? plugin.getItemSpriteTag(patOpt.icon) : ""),
+                    Placeholder.unparsed("material", matOpt != null ? matOpt.name : currentMaterial),
+                    Placeholder.parsed("material_icon", matOpt != null ? plugin.getItemSpriteTag(matOpt.icon) : "")));
             openMainMenu(player);
         }
     }
@@ -871,5 +932,5 @@ public class TrimGuiManager implements Listener {
 
     private record PatternOption(String key, String name, Material icon) {}
     private record MaterialOption(String key, String name, String hexColor, Material icon) {}
-                                                    }
-                                 
+        }
+                    
