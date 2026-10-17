@@ -34,6 +34,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
 
     public static final String BYPASS_PERM = "armortrim.bypass";
+    public static final String RENAME_PERM = "armortrim.rename";
     public static final String ADMIN_PERM = "armortrim.admin";
 
     private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
@@ -47,19 +48,20 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         getServer().getPluginManager().registerEvents(new TrimListener(this, guiManager), this);
         getServer().getPluginManager().registerEvents(guiManager, this);
 
-        var adminCmd = getCommand("antitrim");
-        if (adminCmd != null) {
-            adminCmd.setExecutor(this);
-            adminCmd.setTabCompleter(this);
-        }
+        registerCmd("antitrim");
+        registerCmd("decor");
+        registerCmd("trim");
+        registerCmd("rename");
 
-        var trimCmd = getCommand("trim");
-        if (trimCmd != null) {
-            trimCmd.setExecutor(this);
-            trimCmd.setTabCompleter(this);
-        }
+        getLogger().info("AntiArmorTrim v2.2.0 (Catppuccin Decoration Studio) enabled successfully!");
+    }
 
-        getLogger().info("AntiArmorTrim v2.1.0 (Catppuccin Edition) enabled successfully!");
+    private void registerCmd(String name) {
+        var cmd = getCommand(name);
+        if (cmd != null) {
+            cmd.setExecutor(this);
+            cmd.setTabCompleter(this);
+        }
     }
 
     @Override
@@ -86,43 +88,48 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     /**
-     * Parses MiniMessage strings (and converts any legacy & codes) with non-italic default for GUIs.
+     * Parses MiniMessage strings (and converts any legacy & codes) with non-italic default.
      */
     public Component parse(String input, TagResolver... resolvers) {
+        return parseWithPerm(input, BYPASS_PERM, resolvers);
+    }
+
+    /**
+     * Parses MiniMessage strings while resolving <rank> for a specific permission node.
+     */
+    public Component parseWithPerm(String input, String permissionNode, TagResolver... resolvers) {
         if (input == null || input.isEmpty()) {
             return Component.empty();
         }
         String converted = legacyToMiniMessage(input);
         TagResolver combined = TagResolver.builder()
-                .resolver(Placeholder.parsed("rank", getRequiredRankRaw()))
+                .resolver(Placeholder.parsed("rank", getRequiredRankRaw(permissionNode)))
                 .resolvers(resolvers)
                 .build();
         return miniMessage.deserialize(converted, combined)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
-    /**
-     * Formats a configured chat message with the plugin prefix.
-     */
     public Component getMessage(String key, TagResolver... resolvers) {
-        String prefixRaw = getConfig().getString("messages.prefix", "<#6c7086>[<#cba6f7>✦ <bold>Trim</bold><#6c7086>] ");
-        String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
-        return parse(prefixRaw + msgRaw, resolvers);
+        return getMessageWithPerm(key, BYPASS_PERM, resolvers);
     }
 
-    /**
-     * Retrieves the raw message without prefix (useful for ActionBar notifications).
-     */
+    public Component getMessageWithPerm(String key, String permissionNode, TagResolver... resolvers) {
+        String prefixRaw = getConfig().getString("messages.prefix", "<#6c7086>[<#cba6f7>✦ <bold>Decor</bold><#6c7086>] ");
+        String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
+        return parseWithPerm(prefixRaw + msgRaw, permissionNode, resolvers);
+    }
+
     public Component getRawMessage(String key, TagResolver... resolvers) {
         String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Action denied.");
         return parse(msgRaw, resolvers);
     }
 
     /**
-     * Automatically detects the lowest-weight LuckPerms group with "armortrim.bypass"
+     * Automatically detects the lowest-weight LuckPerms group with the specified permission
      * or returns the configured fallback rank string.
      */
-    public String getRequiredRankRaw() {
+    public String getRequiredRankRaw(String permissionNode) {
         String fallback = getConfig().getString("luckperms.fallback-rank", "<#f9e2af><bold>VIP</bold>");
         boolean autoDetect = getConfig().getBoolean("luckperms.auto-detect-rank", true);
 
@@ -133,7 +140,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
                 for (Group group : lp.getGroupManager().getLoadedGroups()) {
                     for (Node node : group.getNodes()) {
-                        if (node.getKey().equalsIgnoreCase(BYPASS_PERM) && node.getValue()) {
+                        if ((node.getKey().equalsIgnoreCase(permissionNode) || node.getKey().equalsIgnoreCase(BYPASS_PERM))
+                                && node.getValue()) {
                             matchedGroups.add(group);
                             break;
                         }
@@ -161,9 +169,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     /**
-     * Converts legacy & / § color codes into MiniMessage tags so LuckPerms prefixes never break.
+     * Converts legacy & / § and &#RRGGBB color codes into MiniMessage tags.
      */
-    private String legacyToMiniMessage(String text) {
+    public String legacyToMiniMessage(String text) {
         if (text == null) return "";
         String result = text.replace('§', '&');
 
@@ -201,12 +209,37 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
-        if (command.getName().equalsIgnoreCase("trim")) {
+        String cmdName = command.getName().toLowerCase();
+
+        if (cmdName.equals("decor")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(getMessage("only-players"));
+                return true;
+            }
+            guiManager.openDecorHub(player);
+            return true;
+        }
+
+        if (cmdName.equals("trim")) {
             if (!(sender instanceof Player player)) {
                 sender.sendMessage(getMessage("only-players"));
                 return true;
             }
             guiManager.openMainMenu(player);
+            return true;
+        }
+
+        if (cmdName.equals("rename")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(getMessage("only-players"));
+                return true;
+            }
+            if (args.length == 0) {
+                guiManager.openRenameMenu(player);
+            } else {
+                String rawName = String.join(" ", args);
+                guiManager.applyItemRename(player, rawName);
+            }
             return true;
         }
 
