@@ -1,5 +1,8 @@
 package com.server.antitrim;
 
+import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
+import org.bukkit.Bukkit;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -10,6 +13,8 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -17,15 +22,13 @@ import org.bukkit.inventory.meta.ItemMeta;
 public class TrimListener implements Listener {
 
     private final AntiArmorTrim plugin;
-    private final String PERMISSION = "armortrim.bypass";
+    private final TrimGuiManager guiManager;
 
-    public TrimListener(AntiArmorTrim plugin) {
+    public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
         this.plugin = plugin;
+        this.guiManager = guiManager;
     }
 
-    /**
-     * Kiem tra xem mot ItemStack co chua Armor Trim hay khong
-     */
     private boolean hasArmorTrim(ItemStack item) {
         if (item == null || item.getType().isAir()) {
             return false;
@@ -37,11 +40,9 @@ public class TrimListener implements Listener {
         return false;
     }
 
-    /**
-     * Quet va xoa toan bo giap Trim trong kho do cua nguoi choi
-     */
     private void scanAndClean(Player player) {
-        if (player.hasPermission(PERMISSION)) {
+        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
+            guiManager.applyAllSavedTrims(player);
             return;
         }
 
@@ -61,9 +62,34 @@ public class TrimListener implements Listener {
         }
     }
 
-    // 1. Khi nguoi choi mo hoac dong hom do
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onArmorChange(PlayerArmorChangeEvent event) {
+        Player player = event.getPlayer();
+        EquipmentSlot slot = switch (event.getSlotType()) {
+            case HEAD -> EquipmentSlot.HEAD;
+            case CHEST -> EquipmentSlot.CHEST;
+            case LEGS -> EquipmentSlot.LEGS;
+            case FEET -> EquipmentSlot.FEET;
+        };
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
+                guiManager.applySavedTrimToSlot(player, slot);
+            } else {
+                scanAndClean(player);
+            }
+        });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onJoin(PlayerJoinEvent event) {
+        scanAndClean(event.getPlayer());
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onOpen(InventoryOpenEvent event) {
+        if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
         if (event.getPlayer() instanceof Player player) {
             scanAndClean(player);
         }
@@ -76,11 +102,11 @@ public class TrimListener implements Listener {
         }
     }
 
-    // 2. Khi click chuot vao vat pham co Trim trong bat ky giao dien GUI/kho do nao
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onClick(InventoryClickEvent event) {
+        if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (player.hasPermission(PERMISSION)) return;
+        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
         boolean triggered = false;
 
@@ -101,44 +127,44 @@ public class TrimListener implements Listener {
         }
     }
 
-    // 3. Khi cam tren tay chuot phai de mac giap
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
-        if (player.hasPermission(PERMISSION)) return;
+        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
         ItemStack item = event.getItem();
         if (hasArmorTrim(item)) {
             event.setCancelled(true);
-            player.getInventory().setItemInMainHand(null);
+            if (event.getHand() != null) {
+                player.getInventory().setItem(event.getHand(), null);
+            }
             player.sendMessage(plugin.getMessage("remove-trim"));
         }
     }
 
-    // 4. Khi nhat phai do roi tren dat co Trim
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent event) {
         if (event.getEntity() instanceof Player player) {
-            if (player.hasPermission(PERMISSION)) return;
+            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
             if (hasArmorTrim(event.getItem().getItemStack())) {
                 event.setCancelled(true);
-                event.getItem().remove(); // Xoa luon item duoi dat
+                event.getItem().remove();
                 player.sendMessage(plugin.getMessage("remove-trim"));
             }
         }
     }
 
-    // 5. Chan ep Trim tai ban ren Smithing Table
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onSmith(PrepareSmithingEvent event) {
         if (event.getView().getPlayer() instanceof Player player) {
-            if (player.hasPermission(PERMISSION)) return;
+            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
             ItemStack result = event.getResult();
             if (hasArmorTrim(result)) {
-                event.setResult(null); // Chan hien thi va chan lay do ra
-                player.sendMessage(plugin.getMessage("deny-smith"));
+                event.setResult(null);
+                player.sendActionBar(plugin.getRawMessage("deny-smith"));
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1f);
             }
         }
     }
