@@ -10,43 +10,48 @@ luckperms:
 gui:
   decor-title: "<#cba6f7><bold>Decoration Studio</bold>"
   main-title: "<#cba6f7><bold>Armor Trim Studio</bold>"
-  slot-title: "<#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>"
-  rename-title: "<#cba6f7><bold>Item Rename Studio</bold>"
+  slot-title: "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>"
+  rename-title: "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"
 
-  status-selected: "<#a6e3a1>● Selected"
-  status-unselected: "<#6c7086>○ Unselected"
+  # Status shown when player HAS permission
+  selected-status: "<#a6e3a1>● Selected"
+  unselected-status: "<#6c7086>○ Unselected"
 
+  # Lore appended ONLY when the player DOES NOT HAVE permission
   no-permission-lore:
     - ""
-    - "<#f38ba8>✖ Locked"
+    - "<#f38ba8>Locked"
     - "<#a6adc8>Required Rank: <rank>"
 
 rename:
   max-length: 48
 
 messages:
-  # Clean messages without prefix, using 1.21.11 Sprite Object Components
-  remove-trim: "<sprite:blocks:item/barrier> <#f38ba8>You do not have permission to wear trimmed armor."
-  deny-smith: "<sprite:blocks:item/barrier> <#f38ba8>You are not allowed to apply armor trims!"
-  no-permission-gui: "<sprite:blocks:item/barrier> <#f38ba8>Locked feature! Required rank: <rank>"
+  # Clean messages without prefix icon
+  prefix: ""
 
-  # Trim Studio feedback
-  trim-selected: "<pattern_icon> <#cdd6f4>Applied <#f9e2af><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to <#74c7ec><slot><#cdd6f4>."
-  trim-applied-all: "<pattern_icon> <#cdd6f4>Synced <#f9e2af><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to all <#cba6f7>4 armor pieces<#cdd6f4>."
-  trim-cleared: "<sprite:blocks:item/barrier> <#fab387>Cleared active trim for <#74c7ec><slot><#fab387>."
-  trim-missing-selection: "<sprite:blocks:item/barrier> <#f38ba8>Select both a <#89dceb>Pattern<#f38ba8> and a <#fab387>Material<#f38ba8> first."
+  # Enforcement messages
+  remove-trim: "<#f38ba8>You do not have permission to own or wear trimmed armor."
+  deny-smith: "<#f38ba8>You are not allowed to apply armor trims at a Smithing Table."
+  no-permission-gui: "<#f38ba8>You do not have access to this feature. Required rank: <rank>"
 
-  # Rename Studio feedback
-  rename-prompt: "<sprite:blocks:item/name_tag> <#89dceb>Type the new item name in chat, or type <#f38ba8>cancel<#89dceb>."
-  rename-cancelled: "<sprite:blocks:item/arrow> <#fab387>Item rename cancelled."
-  rename-no-item: "<sprite:blocks:item/barrier> <#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
-  rename-too-long: "<sprite:blocks:item/barrier> <#f38ba8>Name is too long! Max length: <#f9e2af><max><#f38ba8> characters."
-  rename-success: "<sprite:blocks:item/name_tag> <#a6e3a1>Renamed item to: <name>"
-  rename-reset: "<sprite:blocks:item/name_tag> <#fab387>Reset held item name to default."
+  # Trim Studio feedback messages (with item texture sprites)
+  trim-selected: "<#cdd6f4>Applied <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to <slot_icon> <#74c7ec><slot><#cdd6f4>."
+  trim-applied-all: "<#cdd6f4>Synced <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to all <#cba6f7>4 armor pieces<#cdd6f4>."
+  trim-cleared: "<#cdd6f4>Cleared active trim for <slot_icon> <#74c7ec><slot><#cdd6f4>."
+  trim-missing-selection: "<#f38ba8>Please select both a <#89dceb>Pattern<#f38ba8> and a <#fab387>Material<#f38ba8> first."
 
-  # System messages
-  reload-success: "<sprite:blocks:item/nether_star> <#a6e3a1>Configuration reloaded."
-  no-permission: "<sprite:blocks:item/barrier> <#f38ba8>You do not have permission to use this command."
+  # Rename Studio feedback messages
+  rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
+  rename-cancelled: "<#a6adc8>Item rename cancelled."
+  rename-no-item: "<#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
+  rename-too-long: "<#f38ba8>Name is too long (Max <#f9e2af><max><#f38ba8> characters)."
+  rename-success: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Renamed item to <name><#cdd6f4>."
+  rename-reset: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Reset item name to default."
+
+  # Admin & System messages
+  reload-success: "<#a6e3a1>Configuration reloaded."
+  no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#fab387>Usage: <#f9e2af>/<label> reload"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload"
   
