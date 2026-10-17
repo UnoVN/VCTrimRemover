@@ -1,8 +1,6 @@
 package com.server.antitrim;
 
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextComponent;
-import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
@@ -12,6 +10,7 @@ import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.group.Group;
 import net.luckperms.api.node.Node;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -53,7 +52,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         registerCmd("trim");
         registerCmd("rename");
 
-        getLogger().info("AntiArmorTrim v2.2.0 (Catppuccin Decoration Studio) enabled successfully!");
+        getLogger().info("AntiArmorTrim v2.3.0 (Catppuccin Sprite Edition) enabled!");
     }
 
     private void registerCmd(String name) {
@@ -78,25 +77,18 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     /**
-     * Builds a clean Adventure TextComponent icon badge using Catppuccin hex colors.
+     * Returns the MiniMessage sprite tag for an item texture in 1.21.11.
+     * Wrapped in <white> so the texture renders in its original untinted colors.
      */
-    public TextComponent createIconBadge(String symbol, String hexColor) {
-        TextColor color = TextColor.fromHexString(hexColor);
-        return Component.text(symbol + " ")
-                .color(color != null ? color : TextColor.fromHexString("#cba6f7"))
-                .decoration(TextDecoration.ITALIC, false);
+    public String getItemSpriteTag(Material material) {
+        String key = material.getKey().getKey();
+        return "<white><sprite:items:item/" + key + "></white>";
     }
 
-    /**
-     * Parses MiniMessage strings (and converts any legacy & codes) with non-italic default.
-     */
     public Component parse(String input, TagResolver... resolvers) {
         return parseWithPerm(input, BYPASS_PERM, resolvers);
     }
 
-    /**
-     * Parses MiniMessage strings while resolving <rank> for a specific permission node.
-     */
     public Component parseWithPerm(String input, String permissionNode, TagResolver... resolvers) {
         if (input == null || input.isEmpty()) {
             return Component.empty();
@@ -115,7 +107,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     public Component getMessageWithPerm(String key, String permissionNode, TagResolver... resolvers) {
-        String prefixRaw = getConfig().getString("messages.prefix", "<#6c7086>[<#cba6f7>✦ <bold>Decor</bold><#6c7086>] ");
+        String prefixRaw = getConfig().getString("messages.prefix", "");
         String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
         return parseWithPerm(prefixRaw + msgRaw, permissionNode, resolvers);
     }
@@ -125,10 +117,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return parse(msgRaw, resolvers);
     }
 
-    /**
-     * Automatically detects the lowest-weight LuckPerms group with the specified permission
-     * or returns the configured fallback rank string.
-     */
     public String getRequiredRankRaw(String permissionNode) {
         String fallback = getConfig().getString("luckperms.fallback-rank", "<#f9e2af><bold>VIP</bold>");
         boolean autoDetect = getConfig().getBoolean("luckperms.auto-detect-rank", true);
@@ -168,9 +156,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return legacyToMiniMessage(fallback);
     }
 
-    /**
-     * Converts legacy & / § and &#RRGGBB color codes into MiniMessage tags.
-     */
     public String legacyToMiniMessage(String text) {
         if (text == null) return "";
         String result = text.replace('§', '&');
@@ -200,6 +185,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                 .replace("&d", "<#f5c2e7>")
                 .replace("&e", "<#f9e2af>")
                 .replace("&f", "<#cdd6f4>")
+                .replace("&k", "<obfuscated>")
                 .replace("&l", "<bold>")
                 .replace("&m", "<strikethrough>")
                 .replace("&n", "<underlined>")
