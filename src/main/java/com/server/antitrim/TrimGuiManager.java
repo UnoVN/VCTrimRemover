@@ -84,7 +84,7 @@ public class TrimGuiManager implements Listener {
         addPattern("flow", "Flow", Material.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
         addPattern("bolt", "Bolt", Material.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
 
-        // All 10 Trim Materials styled with Catppuccin Mocha Hex Colors
+        // All 10 Trim Materials styled with Catppuccin Mocha Hex Colors for UI
         addMaterial("quartz", "Quartz", "#f5e0dc", Material.QUARTZ);
         addMaterial("iron", "Iron", "#bac2de", Material.IRON_INGOT);
         addMaterial("netherite", "Netherite", "#6c7086", Material.NETHERITE_INGOT);
@@ -278,7 +278,7 @@ public class TrimGuiManager implements Listener {
             inv.setItem(i, border);
         }
 
-        // Slot 11: Standard Minecraft Color & Format Guide (Using parseLiteral so &c, &k are visible!)
+        // Slot 11: Standard Vanilla Minecraft Color & Format Guide
         ItemStack guideItem = createCleanIconStack(Material.KNOWLEDGE_BOOK);
         ItemMeta guideMeta = guideItem.getItemMeta();
         if (guideMeta != null) {
@@ -287,19 +287,19 @@ public class TrimGuiManager implements Listener {
 
             List<Component> lore = new ArrayList<>();
             lore.add(plugin.parseLiteral("<#cba6f7>Color Codes:"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&0 <#6c7086>▸ <black>Black     <#cdd6f4>&1 <#6c7086>▸ <dark_blue>Dark Blue"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&2 <#6c7086>▸ <dark_green>Green     <#cdd6f4>&3 <#6c7086>▸ <dark_aqua>Cyan"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&4 <#6c7086>▸ <dark_red>Dark Red  <#cdd6f4>&5 <#6c7086>▸ <dark_purple>Purple"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&6 <#6c7086>▸ <gold>Gold      <#cdd6f4>&7 <#6c7086>▸ <#a6adc8>Gray"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&8 <#6c7086>▸ <#6c7086>Dark Gray <#cdd6f4>&9 <#6c7086>▸ <#89b4fa>Blue"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&a <#6c7086>▸ <#a6e3a1>Lime      <#cdd6f4>&b <#6c7086>▸ <#89dceb>Aqua"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&c <#6c7086>▸ <#f38ba8>Red       <#cdd6f4>&d <#6c7086>▸ <#f5c2e7>Pink"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&e <#6c7086>▸ <#f9e2af>Yellow    <#cdd6f4>&f <#6c7086>▸ <#cdd6f4>White"));
+            lore.add(plugin.parseLiteral("<white>&0 <dark_gray>▸ <black>Black     <white>&1 <dark_gray>▸ <dark_blue>Dark Blue"));
+            lore.add(plugin.parseLiteral("<white>&2 <dark_gray>▸ <dark_green>Green     <white>&3 <dark_gray>▸ <dark_aqua>Dark Aqua"));
+            lore.add(plugin.parseLiteral("<white>&4 <dark_gray>▸ <dark_red>Dark Red  <white>&5 <dark_gray>▸ <dark_purple>Dark Purple"));
+            lore.add(plugin.parseLiteral("<white>&6 <dark_gray>▸ <gold>Gold      <white>&7 <dark_gray>▸ <gray>Gray"));
+            lore.add(plugin.parseLiteral("<white>&8 <dark_gray>▸ <dark_gray>Dark Gray <white>&9 <dark_gray>▸ <blue>Blue"));
+            lore.add(plugin.parseLiteral("<white>&a <dark_gray>▸ <green>Green     <white>&b <dark_gray>▸ <aqua>Aqua"));
+            lore.add(plugin.parseLiteral("<white>&c <dark_gray>▸ <red>Red       <white>&d <dark_gray>▸ <light_purple>Light Purple"));
+            lore.add(plugin.parseLiteral("<white>&e <dark_gray>▸ <yellow>Yellow    <white>&f <dark_gray>▸ <white>White"));
             lore.add(Component.empty());
             lore.add(plugin.parseLiteral("<#cba6f7>Format Codes:"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&k <#6c7086>▸ <#cdd6f4><obfuscated>abc</obfuscated> <#a6adc8>(Magic)   <#cdd6f4>&l <#6c7086>▸ <#cdd6f4><bold>Bold</bold>"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&m <#6c7086>▸ <#cdd6f4><strikethrough>Strike</strikethrough>        <#cdd6f4>&n <#6c7086>▸ <#cdd6f4><underlined>Underline</underlined>"));
-            lore.add(plugin.parseLiteral("<#cdd6f4>&o <#6c7086>▸ <#cdd6f4><italic>Italic</italic>        <#cdd6f4>&r <#6c7086>▸ <#a6adc8>Reset"));
+            lore.add(plugin.parseLiteral("<white>&k <dark_gray>▸ <white><obfuscated>abc</obfuscated> <gray>(Magic)   <white>&l <dark_gray>▸ <white><bold>Bold</bold>"));
+            lore.add(plugin.parseLiteral("<white>&m <dark_gray>▸ <white><strikethrough>Strike</strikethrough>        <white>&n <dark_gray>▸ <white><underlined>Underline</underlined>"));
+            lore.add(plugin.parseLiteral("<white>&o <dark_gray>▸ <white><italic>Italic</italic>        <white>&r <dark_gray>▸ <gray>Reset"));
             guideMeta.lore(lore);
             guideItem.setItemMeta(guideMeta);
         }
@@ -352,6 +352,9 @@ public class TrimGuiManager implements Listener {
         player.openInventory(inv);
     }
 
+    /**
+     * Renames the item in the player's main hand using pure Vanilla Minecraft color codes (&0-&f, &k-&r).
+     */
     public void applyItemRename(Player player, String rawInput) {
         if (!canUseRename(player)) {
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
@@ -366,7 +369,7 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        Component parsedName = plugin.parse(rawInput);
+        Component parsedName = plugin.parseMinecraftFormat(rawInput);
         String plainVisible = PlainTextComponentSerializer.plainText().serialize(parsedName);
         int maxLength = plugin.getConfig().getInt("rename.max-length", 48);
 
@@ -841,7 +844,6 @@ public class TrimGuiManager implements Listener {
                     EquipmentSlot.FEET
             };
 
-            // If unselected or just reset, sync the reset/empty state across all 4 armor slots
             if (currentPattern == null || currentMaterial == null) {
                 for (EquipmentSlot s : allSlots) {
                     setSavedTrim(player, s, null, null);
@@ -891,7 +893,6 @@ public class TrimGuiManager implements Listener {
         }
 
         event.setCancelled(true);
-        // Read the raw packet message directly from signedMessage() so chat plugins cannot strip & color codes
         String rawInput = event.signedMessage().message().trim();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
