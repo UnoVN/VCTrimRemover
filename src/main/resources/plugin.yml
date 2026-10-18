@@ -1,10 +1,10 @@
 name: AntiArmorTrim
-version: 2.2.0
+version: 2.4.0
 main: com.server.antitrim.AntiArmorTrim
 api-version: '1.21'
 author: LeThienNhan
-softdepend: [LuckPerms]
-description: Catppuccin Decoration Studio - Armor Trim & Item Rename.
+softdepend: [LuckPerms, Nexo]
+description: Catppuccin Decoration Studio - Armor Trim, Nexo Custom Hats & Item Rename.
 
 commands:
   antitrim:
@@ -17,6 +17,9 @@ commands:
   trim:
     description: Open the Armor Trim Studio GUI
     aliases: [armortrim, trims]
+  hat:
+    description: Open the Custom Hat Studio GUI
+    aliases: [hats, customhat]
   rename:
     description: Open the Item Rename Studio GUI or rename held item
     aliases: [itemrename]
@@ -25,10 +28,12 @@ permissions:
   armortrim.bypass:
     description: Allows owning, wearing, and using the Auto-Trim GUI Studio.
     default: op
+  armortrim.hat:
+    description: Allows equipping Nexo Custom Hats on Diamond and Netherite helmets.
+    default: op
   armortrim.rename:
     description: Allows renaming items via the Rename Studio GUI or command.
     default: op
   armortrim.admin:
-    description: Allows reloading the plugin configuration.
+    description: Allows reloading config and managing Custom Hats via Admin GUI.
     default: op
-    
