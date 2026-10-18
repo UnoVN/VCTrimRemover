@@ -8,6 +8,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -15,11 +16,14 @@ import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+
+import java.util.List;
 
 public class TrimListener implements Listener {
 
@@ -48,8 +52,7 @@ public class TrimListener implements Listener {
         if (!guiManager.canUseHat(player)) {
             ItemStack helmet = player.getInventory().getHelmet();
             if (guiManager.isCustomHatItem(helmet)) {
-                guiManager.stripCustomHatFromItem(helmet);
-                player.getInventory().setHelmet(helmet);
+                player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
             }
         }
 
@@ -90,28 +93,57 @@ public class TrimListener implements Listener {
         });
     }
 
+    // Restore the original Diamond/Netherite helmet in death drops so custom hats never drop on death
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDeath(PlayerDeathEvent event) {
+        List<ItemStack> drops = event.getDrops();
+        for (int i = 0; i < drops.size(); i++) {
+            ItemStack drop = drops.get(i);
+            if (guiManager.isCustomHatItem(drop)) {
+                drops.set(i, guiManager.restoreOriginalHelmet(drop));
+            }
+        }
+
+        if (event.getKeepInventory()) {
+            Player player = event.getPlayer();
+            ItemStack helmet = player.getInventory().getHelmet();
+            if (guiManager.isCustomHatItem(helmet)) {
+                player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+            }
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDrop(PlayerDropItemEvent event) {
         ItemStack dropped = event.getItemDrop().getItemStack();
         if (guiManager.isCustomHatItem(dropped)) {
-            guiManager.stripCustomHatFromItem(dropped);
-            event.getItemDrop().setItemStack(dropped);
+            event.getItemDrop().setItemStack(guiManager.restoreOriginalHelmet(dropped));
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onSwapHand(PlayerSwapHandItemsEvent event) {
         if (guiManager.isCustomHatItem(event.getOffHandItem())) {
-            guiManager.stripCustomHatFromItem(event.getOffHandItem());
+            event.setOffHandItem(guiManager.restoreOriginalHelmet(event.getOffHandItem()));
         }
         if (guiManager.isCustomHatItem(event.getMainHandItem())) {
-            guiManager.stripCustomHatFromItem(event.getMainHandItem());
+            event.setMainHandItem(guiManager.restoreOriginalHelmet(event.getMainHandItem()));
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onJoin(PlayerJoinEvent event) {
         scanAndClean(event.getPlayer());
+    }
+
+    // Restore original helmet on quit so offline player data always holds the real Diamond/Netherite helmet
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onQuitRestore(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        ItemStack helmet = player.getInventory().getHelmet();
+        if (guiManager.isCustomHatItem(helmet)) {
+            player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -127,8 +159,7 @@ public class TrimListener implements Listener {
         if (event.getPlayer() instanceof Player player) {
             ItemStack cursor = player.getItemOnCursor();
             if (guiManager.isCustomHatItem(cursor)) {
-                guiManager.stripCustomHatFromItem(cursor);
-                player.setItemOnCursor(cursor);
+                player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
             }
             scanAndClean(player);
         }
@@ -139,12 +170,22 @@ public class TrimListener implements Listener {
         if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        // Immediately strip custom hat visual when clicked so players cannot move hat models into chests or cursor
+        // Immediately restore original helmet when clicked so players pick up/move the real helmet
+        boolean restoredHat = false;
         if (guiManager.isCustomHatItem(event.getCurrentItem())) {
-            guiManager.stripCustomHatFromItem(event.getCurrentItem());
+            event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
+            restoredHat = true;
         }
         if (guiManager.isCustomHatItem(event.getCursor())) {
-            guiManager.stripCustomHatFromItem(event.getCursor());
+            event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
+            restoredHat = true;
+        }
+        if (restoredHat) {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    scanAndClean(player);
+                }
+            });
         }
 
         if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
@@ -188,7 +229,7 @@ public class TrimListener implements Listener {
         if (event.getEntity() instanceof Player player) {
             ItemStack picked = event.getItem().getItemStack();
             if (guiManager.isCustomHatItem(picked)) {
-                guiManager.stripCustomHatFromItem(picked);
+                picked = guiManager.restoreOriginalHelmet(picked);
                 event.getItem().setItemStack(picked);
             }
 
