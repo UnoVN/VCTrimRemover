@@ -5,6 +5,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.group.Group;
@@ -31,12 +32,16 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     private static AntiArmorTrim instance;
     private TrimGuiManager guiManager;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
+    private final LegacyComponentSerializer minecraftLegacySerializer = LegacyComponentSerializer.builder()
+            .character('&')
+            .build();
 
     public static final String BYPASS_PERM = "armortrim.bypass";
     public static final String RENAME_PERM = "armortrim.rename";
     public static final String ADMIN_PERM = "armortrim.admin";
 
-    private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)&?#([A-Fa-f0-9]{6})");
+    // Bắt buộc phải có & hoặc § đứng trước # để không làm hỏng thẻ <#hex> của MiniMessage
+    private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)[&§]#([A-Fa-f0-9]{6})");
     private static final Pattern LEGACY_CODE_PATTERN = Pattern.compile("(?i)[&§]([0-9a-fk-or])");
 
     @Override
@@ -53,7 +58,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         registerCmd("trim");
         registerCmd("rename");
 
-        getLogger().info("AntiArmorTrim v2.3.1 (Catppuccin Sprite Edition) enabled!");
+        getLogger().info("AntiArmorTrim v2.3.2 enabled!");
     }
 
     private void registerCmd(String name) {
@@ -83,13 +88,25 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     /**
-     * Parses pure MiniMessage without replacing & codes (used for the Format Guide so &c, &k stay visible).
+     * Parses pure MiniMessage without replacing & codes (used for Format Guide so &c, &k stay visible).
      */
     public Component parseLiteral(String input) {
         if (input == null || input.isEmpty()) {
             return Component.empty();
         }
         return miniMessage.deserialize(input)
+                .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
+    }
+
+    /**
+     * Parses item rename input using 100% standard Vanilla Minecraft colors (&0-&f, &k-&r).
+     */
+    public Component parseMinecraftFormat(String input) {
+        if (input == null || input.isEmpty()) {
+            return Component.empty();
+        }
+        String normalized = input.replace('§', '&');
+        return minecraftLegacySerializer.deserialize(normalized)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
@@ -168,7 +185,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     /**
-     * Case-insensitive converter for legacy & / § color codes and &#RRGGBB hex codes into Catppuccin MiniMessage tags.
+     * Converts &#RRGGBB and standard &0-&f codes into standard Minecraft MiniMessage tags
+     * without touching existing <#RRGGBB> tags.
      */
     public String legacyToMiniMessage(String text) {
         if (text == null || text.isEmpty()) return "";
@@ -192,15 +210,15 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                 case '4' -> "<dark_red>";
                 case '5' -> "<dark_purple>";
                 case '6' -> "<gold>";
-                case '7' -> "<#a6adc8>";
-                case '8' -> "<#6c7086>";
-                case '9' -> "<#89b4fa>";
-                case 'a' -> "<#a6e3a1>";
-                case 'b' -> "<#89dceb>";
-                case 'c' -> "<#f38ba8>";
-                case 'd' -> "<#f5c2e7>";
-                case 'e' -> "<#f9e2af>";
-                case 'f' -> "<#cdd6f4>";
+                case '7' -> "<gray>";
+                case '8' -> "<dark_gray>";
+                case '9' -> "<blue>";
+                case 'a' -> "<green>";
+                case 'b' -> "<aqua>";
+                case 'c' -> "<red>";
+                case 'd' -> "<light_purple>";
+                case 'e' -> "<yellow>";
+                case 'f' -> "<white>";
                 case 'k' -> "<obfuscated>";
                 case 'l' -> "<bold>";
                 case 'm' -> "<strikethrough>";
