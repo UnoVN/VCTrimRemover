@@ -113,10 +113,6 @@ public class TrimGuiManager implements Listener {
         return player.hasPermission(AntiArmorTrim.RENAME_PERM) || player.hasPermission(AntiArmorTrim.BYPASS_PERM);
     }
 
-    /**
-     * Creates a clean GUI ItemStack that displays the exact texture of visualMaterial
-     * without ANY hardcoded vanilla tooltips (such as "Smithing Template / Applies to / Ingredients").
-     */
     private ItemStack createCleanIconStack(Material visualMaterial) {
         if (SET_ITEM_MODEL_METHOD != null) {
             ItemStack stack = new ItemStack(Material.PAPER);
@@ -140,9 +136,6 @@ public class TrimGuiManager implements Listener {
         return fallback;
     }
 
-    /**
-     * Strips all vanilla attributes, armor trim hover lines, and extra item flags.
-     */
     private void hideAllVanillaTooltips(ItemMeta meta) {
         meta.setAttributeModifiers(HashMultimap.create());
         meta.addItemFlags(ItemFlag.values());
@@ -285,24 +278,28 @@ public class TrimGuiManager implements Listener {
             inv.setItem(i, border);
         }
 
-        // Slot 11: Standard Minecraft Color & Format Guide
+        // Slot 11: Standard Minecraft Color & Format Guide (Using parseLiteral so &c, &k are visible!)
         ItemStack guideItem = createCleanIconStack(Material.KNOWLEDGE_BOOK);
         ItemMeta guideMeta = guideItem.getItemMeta();
         if (guideMeta != null) {
             String sprite = plugin.getItemSpriteTag(Material.KNOWLEDGE_BOOK);
-            guideMeta.displayName(plugin.parse(sprite + " <#f9e2af><bold>Minecraft Format Guide</bold>"));
+            guideMeta.displayName(plugin.parseLiteral(sprite + " <#f9e2af><bold>Minecraft Format Guide</bold>"));
 
             List<Component> lore = new ArrayList<>();
-            lore.add(plugin.parse("<#cba6f7>Color Codes:"));
-            lore.add(plugin.parse("<black>&0 Black   <dark_blue>&1 Dark Blue   <dark_green>&2 Dark Green   <dark_aqua>&3 Dark Aqua"));
-            lore.add(plugin.parse("<dark_red>&4 Dark Red   <dark_purple>&5 Purple   <gold>&6 Gold   <#a6adc8>&7 Gray"));
-            lore.add(plugin.parse("<#6c7086>&8 Dark Gray   <#89b4fa>&9 Blue   <#a6e3a1>&a Green   <#89dceb>&b Aqua"));
-            lore.add(plugin.parse("<#f38ba8>&c Red   <#f5c2e7>&d Pink   <#f9e2af>&e Yellow   <#cdd6f4>&f White"));
+            lore.add(plugin.parseLiteral("<#cba6f7>Color Codes:"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&0 <#6c7086>▸ <black>Black     <#cdd6f4>&1 <#6c7086>▸ <dark_blue>Dark Blue"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&2 <#6c7086>▸ <dark_green>Green     <#cdd6f4>&3 <#6c7086>▸ <dark_aqua>Cyan"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&4 <#6c7086>▸ <dark_red>Dark Red  <#cdd6f4>&5 <#6c7086>▸ <dark_purple>Purple"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&6 <#6c7086>▸ <gold>Gold      <#cdd6f4>&7 <#6c7086>▸ <#a6adc8>Gray"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&8 <#6c7086>▸ <#6c7086>Dark Gray <#cdd6f4>&9 <#6c7086>▸ <#89b4fa>Blue"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&a <#6c7086>▸ <#a6e3a1>Lime      <#cdd6f4>&b <#6c7086>▸ <#89dceb>Aqua"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&c <#6c7086>▸ <#f38ba8>Red       <#cdd6f4>&d <#6c7086>▸ <#f5c2e7>Pink"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&e <#6c7086>▸ <#f9e2af>Yellow    <#cdd6f4>&f <#6c7086>▸ <#cdd6f4>White"));
             lore.add(Component.empty());
-            lore.add(plugin.parse("<#cba6f7>Format Codes:"));
-            lore.add(plugin.parse("<#cdd6f4>&k <obfuscated>Magic</obfuscated> <#6c7086>(Obfuscated)   <#cdd6f4>&l <bold>Bold</bold>"));
-            lore.add(plugin.parse("<#cdd6f4>&m <strikethrough>Strike</strikethrough>   <#cdd6f4>&n <underlined>Underline</underlined>"));
-            lore.add(plugin.parse("<#cdd6f4>&o <italic>Italic</italic>   <#cdd6f4>&r Reset"));
+            lore.add(plugin.parseLiteral("<#cba6f7>Format Codes:"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&k <#6c7086>▸ <#cdd6f4><obfuscated>abc</obfuscated> <#a6adc8>(Magic)   <#cdd6f4>&l <#6c7086>▸ <#cdd6f4><bold>Bold</bold>"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&m <#6c7086>▸ <#cdd6f4><strikethrough>Strike</strikethrough>        <#cdd6f4>&n <#6c7086>▸ <#cdd6f4><underlined>Underline</underlined>"));
+            lore.add(plugin.parseLiteral("<#cdd6f4>&o <#6c7086>▸ <#cdd6f4><italic>Italic</italic>        <#cdd6f4>&r <#6c7086>▸ <#a6adc8>Reset"));
             guideMeta.lore(lore);
             guideItem.setItemMeta(guideMeta);
         }
@@ -526,7 +523,7 @@ public class TrimGuiManager implements Listener {
             String sprite = plugin.getItemSpriteTag(Material.NETHER_STAR);
             allMeta.displayName(plugin.parse(sprite + " <#cba6f7><bold>Sync to All 4 Pieces</bold>"));
             List<Component> allLore = new ArrayList<>();
-            allLore.add(plugin.parse("<#a6adc8>Copy this slot's Pattern & Material"));
+            allLore.add(plugin.parse("<#a6adc8>Sync this slot's state (Trim or Reset)"));
             allLore.add(plugin.parse("<#a6adc8>to Helmet, Chestplate, Leggings & Boots."));
             appendLockedLoreIfNeeded(player, allLore, AntiArmorTrim.BYPASS_PERM);
             allMeta.lore(allLore);
@@ -588,10 +585,6 @@ public class TrimGuiManager implements Listener {
         return item;
     }
 
-    /**
-     * When the player HAS permission: only shows Selected / Unselected status (never shows UNLOCKED).
-     * When the player DOES NOT have permission: shows the Locked & Required Rank lore.
-     */
     private void appendSelectionOrLockedLore(Player player, List<Component> lore, String requiredPerm, boolean selected) {
         boolean hasPerm = requiredPerm.equals(AntiArmorTrim.RENAME_PERM)
                 ? canUseRename(player)
@@ -610,9 +603,6 @@ public class TrimGuiManager implements Listener {
         }
     }
 
-    /**
-     * For action buttons: shows nothing extra if player has permission, or Locked lore if not.
-     */
     private void appendLockedLoreIfNeeded(Player player, List<Component> lore, String requiredPerm) {
         boolean hasPerm = requiredPerm.equals(AntiArmorTrim.RENAME_PERM)
                 ? canUseRename(player)
@@ -844,15 +834,34 @@ public class TrimGuiManager implements Listener {
 
         // Sync to All 4 Pieces Button (Slot 53)
         if (rawSlot == 53) {
+            EquipmentSlot[] allSlots = {
+                    EquipmentSlot.HEAD,
+                    EquipmentSlot.CHEST,
+                    EquipmentSlot.LEGS,
+                    EquipmentSlot.FEET
+            };
+
+            // If unselected or just reset, sync the reset/empty state across all 4 armor slots
             if (currentPattern == null || currentMaterial == null) {
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-                player.sendMessage(plugin.getMessage("trim-missing-selection"));
+                for (EquipmentSlot s : allSlots) {
+                    setSavedTrim(player, s, null, null);
+                    ItemStack worn = player.getInventory().getItem(s);
+                    if (worn != null && worn.getItemMeta() instanceof ArmorMeta armorMeta && armorMeta.hasTrim()) {
+                        armorMeta.setTrim(null);
+                        worn.setItemMeta(armorMeta);
+                        player.getInventory().setItem(s, worn);
+                    }
+                }
+                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+                player.sendMessage(plugin.getMessage("trim-cleared-all"));
+                openMainMenu(player);
                 return;
             }
+
             PatternOption patOpt = PATTERNS.get(currentPattern);
             MaterialOption matOpt = MATERIALS.get(currentMaterial);
 
-            for (EquipmentSlot s : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            for (EquipmentSlot s : allSlots) {
                 setSavedTrim(player, s, currentPattern, currentMaterial);
             }
             applyAllSavedTrims(player);
@@ -882,7 +891,8 @@ public class TrimGuiManager implements Listener {
         }
 
         event.setCancelled(true);
-        String rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+        // Read the raw packet message directly from signedMessage() so chat plugins cannot strip & color codes
+        String rawInput = event.signedMessage().message().trim();
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
@@ -932,5 +942,4 @@ public class TrimGuiManager implements Listener {
 
     private record PatternOption(String key, String name, Material icon) {}
     private record MaterialOption(String key, String name, String hexColor, Material icon) {}
-        }
-                    
+}
