@@ -13,6 +13,7 @@ gui:
   slot-title: "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>"
   hat-title: "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold>"
   hat-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold>"
+  hat-editor-title: "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>"
   rename-title: "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"
 
   # Status shown when player HAS permission
@@ -25,9 +26,15 @@ gui:
     - "<#f38ba8>Locked"
     - "<#a6adc8>Required Rank: <rank>"
 
-# List of Nexo item IDs available in /hat (Manageable in-game via /hat admin)
+  # Lore appended to the equipped Custom Hat showing the original base helmet info
+  hat-base-armor-lore:
+    - ""
+    - "<base_icon> <#a6adc8>Base Armor: <base_name>"
+
+# Custom Hats storage (Managed automatically via /hat admin)
 hats:
   items: []
+  definitions: {}
 
 rename:
   max-length: 48
@@ -35,29 +42,35 @@ rename:
 messages:
   prefix: ""
 
-  # Enforcement messages
+  # Enforcement
   remove-trim: "<#f38ba8>You do not have permission to own or wear trimmed armor."
   deny-smith: "<#f38ba8>You are not allowed to apply armor trims at a Smithing Table."
   no-permission-gui: "<#f38ba8>You do not have access to this feature. Required rank: <rank>"
 
-  # Trim Studio feedback messages
+  # Trim Studio
   trim-selected: "<#cdd6f4>Applied <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to <slot_icon> <#74c7ec><slot><#cdd6f4>."
   trim-applied-all: "<#cdd6f4>Synced <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to all <#cba6f7>4 armor pieces<#cdd6f4>."
   trim-cleared: "<#cdd6f4>Cleared active trim for <slot_icon> <#74c7ec><slot><#cdd6f4>."
   trim-cleared-all: "<#cdd6f4>Cleared active trims across all <#cba6f7>4 armor pieces<#cdd6f4>."
-  trim-hat-active: "<#fab387>Helmet trim is currently disabled while a Custom Hat is active."
+  trim-hat-active: "<#fab387>Helmet trim is paused while a Custom Hat is active."
 
-  # Custom Hat Studio feedback messages
-  hat-selected: "<white><sprite:items:item/netherite_helmet></white> <#cdd6f4>Selected custom hat <#cba6f7><hat><#cdd6f4>. Equip a Diamond or Netherite helmet to apply it."
-  hat-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Disabled custom hat and restored your helmet appearance."
-  hat-admin-prompt: "<white><sprite:items:item/command_block></white> <#cdd6f4>Type the <#89dceb>Nexo Item ID<#cdd6f4> in chat to add a hat, or type <#f38ba8>cancel<#cdd6f4>."
-  hat-admin-cancelled: "<#a6adc8>Hat addition cancelled."
-  hat-admin-added: "<#a6e3a1>Added Nexo hat ID <#89dceb><id><#a6e3a1> to the hat list."
-  hat-admin-added-invalid: "<#fab387>Added ID <#f38ba8><id><#fab387>, but it was not found in Nexo! You can delete it in the Admin GUI."
-  hat-admin-exists: "<#f38ba8>Hat ID <#f9e2af><id><#f38ba8> is already in the list."
-  hat-admin-removed: "<#f38ba8>Removed hat ID <#f9e2af><id><#f38ba8> from the hat list."
+  # Custom Hat Studio & Admin Editor
+  hat-selected: "<white><sprite:items:item/netherite_helmet></white> <#cdd6f4>Equipped custom hat <hat><#cdd6f4>."
+  hat-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Restored your default helmet appearance."
+  hat-admin-prompt-id: "<white><sprite:items:item/command_block></white> <#cdd6f4>Type the <#89dceb>Nexo Item ID<#cdd6f4> in chat, or type <#f38ba8>cancel<#cdd6f4>."
+  hat-admin-prompt-name: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new <#89dceb>Display Name<#cdd6f4> for <#cba6f7><id><#cdd6f4>, or type <#f38ba8>cancel<#cdd6f4>."
+  hat-admin-prompt-lore: "<white><sprite:items:item/writable_book></white> <#cdd6f4>Type new <#89dceb>Lore<#cdd6f4> (use <#f9e2af>|<#cdd6f4> for new lines, or <#a6e3a1>add <text><#cdd6f4> to append), or <#f38ba8>cancel<#cdd6f4>."
+  hat-admin-cancelled: "<#a6adc8>Operation cancelled."
+  hat-admin-added: "<#a6e3a1>Added Nexo hat <#89dceb><id><#a6e3a1>."
+  hat-admin-added-invalid: "<#fab387>Added <#f38ba8><id><#fab387>, but it was not found in Nexo."
+  hat-admin-exists: "<#f38ba8>Hat <#f9e2af><id><#f38ba8> already exists."
+  hat-admin-removed: "<#f38ba8>Removed hat <#f9e2af><id><#f38ba8>."
+  hat-admin-name-updated: "<#a6e3a1>Updated display name for <#89dceb><id><#a6e3a1> to <name><#a6e3a1>."
+  hat-admin-name-reset: "<#cdd6f4>Reset display name for <#89dceb><id><#cdd6f4>."
+  hat-admin-lore-updated: "<#a6e3a1>Updated lore for <#89dceb><id><#a6e3a1>."
+  hat-admin-lore-reset: "<#cdd6f4>Cleared custom lore for <#89dceb><id><#cdd6f4>."
 
-  # Rename Studio feedback messages
+  # Rename Studio
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
   rename-cancelled: "<#a6adc8>Item rename cancelled."
   rename-no-item: "<#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
@@ -65,7 +78,7 @@ messages:
   rename-success: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Renamed item to <name><#cdd6f4>."
   rename-reset: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Reset item name to default."
 
-  # Admin & System messages
+  # System
   reload-success: "<#a6e3a1>Configuration reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
