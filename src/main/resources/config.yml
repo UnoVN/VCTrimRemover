@@ -27,7 +27,6 @@ rename:
   max-length: 48
 
 messages:
-  # Clean messages without prefix icon
   prefix: ""
 
   # Enforcement messages
@@ -35,11 +34,11 @@ messages:
   deny-smith: "<#f38ba8>You are not allowed to apply armor trims at a Smithing Table."
   no-permission-gui: "<#f38ba8>You do not have access to this feature. Required rank: <rank>"
 
-  # Trim Studio feedback messages (with item texture sprites)
+  # Trim Studio feedback messages
   trim-selected: "<#cdd6f4>Applied <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to <slot_icon> <#74c7ec><slot><#cdd6f4>."
   trim-applied-all: "<#cdd6f4>Synced <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to all <#cba6f7>4 armor pieces<#cdd6f4>."
   trim-cleared: "<#cdd6f4>Cleared active trim for <slot_icon> <#74c7ec><slot><#cdd6f4>."
-  trim-missing-selection: "<#f38ba8>Please select both a <#89dceb>Pattern<#f38ba8> and a <#fab387>Material<#f38ba8> first."
+  trim-cleared-all: "<#cdd6f4>Cleared active trims across all <#cba6f7>4 armor pieces<#cdd6f4>."
 
   # Rename Studio feedback messages
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
@@ -54,4 +53,3 @@ messages:
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
   usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload"
-  
