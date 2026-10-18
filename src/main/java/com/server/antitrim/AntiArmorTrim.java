@@ -36,7 +36,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     public static final String RENAME_PERM = "armortrim.rename";
     public static final String ADMIN_PERM = "armortrim.admin";
 
-    private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
+    private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)&?#([A-Fa-f0-9]{6})");
+    private static final Pattern LEGACY_CODE_PATTERN = Pattern.compile("(?i)[&§]([0-9a-fk-or])");
 
     @Override
     public void onEnable() {
@@ -52,7 +53,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         registerCmd("trim");
         registerCmd("rename");
 
-        getLogger().info("AntiArmorTrim v2.3.0 (Catppuccin Sprite Edition) enabled!");
+        getLogger().info("AntiArmorTrim v2.3.1 (Catppuccin Sprite Edition) enabled!");
     }
 
     private void registerCmd(String name) {
@@ -76,13 +77,20 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return guiManager;
     }
 
-    /**
-     * Returns the MiniMessage sprite tag for an item texture in 1.21.11.
-     * Wrapped in <white> so the texture renders in its original untinted colors.
-     */
     public String getItemSpriteTag(Material material) {
         String key = material.getKey().getKey();
         return "<white><sprite:items:item/" + key + "></white>";
+    }
+
+    /**
+     * Parses pure MiniMessage without replacing & codes (used for the Format Guide so &c, &k stay visible).
+     */
+    public Component parseLiteral(String input) {
+        if (input == null || input.isEmpty()) {
+            return Component.empty();
+        }
+        return miniMessage.deserialize(input)
+                .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
     public Component parse(String input, TagResolver... resolvers) {
@@ -108,7 +116,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     public Component getMessageWithPerm(String key, String permissionNode, TagResolver... resolvers) {
         String prefixRaw = getConfig().getString("messages.prefix", "");
-        String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
+        String defaultMsg = key.equals("trim-cleared-all")
+                ? "<#cdd6f4>Cleared active trims across all <#cba6f7>4 armor pieces<#cdd6f4>."
+                : "<#f38ba8>Missing message key: " + key;
+        String msgRaw = getConfig().getString("messages." + key, defaultMsg);
         return parseWithPerm(prefixRaw + msgRaw, permissionNode, resolvers);
     }
 
@@ -156,41 +167,52 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return legacyToMiniMessage(fallback);
     }
 
+    /**
+     * Case-insensitive converter for legacy & / § color codes and &#RRGGBB hex codes into Catppuccin MiniMessage tags.
+     */
     public String legacyToMiniMessage(String text) {
-        if (text == null) return "";
-        String result = text.replace('§', '&');
+        if (text == null || text.isEmpty()) return "";
 
-        Matcher matcher = HEX_LEGACY_PATTERN.matcher(result);
-        StringBuilder sb = new StringBuilder();
-        while (matcher.find()) {
-            matcher.appendReplacement(sb, "<#" + matcher.group(1) + ">");
+        Matcher hexMatcher = HEX_LEGACY_PATTERN.matcher(text);
+        StringBuilder hexSb = new StringBuilder();
+        while (hexMatcher.find()) {
+            hexMatcher.appendReplacement(hexSb, "<#" + hexMatcher.group(1) + ">");
         }
-        matcher.appendTail(sb);
-        result = sb.toString();
+        hexMatcher.appendTail(hexSb);
 
-        return result
-                .replace("&0", "<black>")
-                .replace("&1", "<dark_blue>")
-                .replace("&2", "<dark_green>")
-                .replace("&3", "<dark_aqua>")
-                .replace("&4", "<dark_red>")
-                .replace("&5", "<dark_purple>")
-                .replace("&6", "<gold>")
-                .replace("&7", "<#a6adc8>")
-                .replace("&8", "<#6c7086>")
-                .replace("&9", "<#89b4fa>")
-                .replace("&a", "<#a6e3a1>")
-                .replace("&b", "<#89dceb>")
-                .replace("&c", "<#f38ba8>")
-                .replace("&d", "<#f5c2e7>")
-                .replace("&e", "<#f9e2af>")
-                .replace("&f", "<#cdd6f4>")
-                .replace("&k", "<obfuscated>")
-                .replace("&l", "<bold>")
-                .replace("&m", "<strikethrough>")
-                .replace("&n", "<underlined>")
-                .replace("&o", "<italic>")
-                .replace("&r", "<reset>");
+        Matcher codeMatcher = LEGACY_CODE_PATTERN.matcher(hexSb.toString());
+        StringBuilder finalSb = new StringBuilder();
+        while (codeMatcher.find()) {
+            char code = Character.toLowerCase(codeMatcher.group(1).charAt(0));
+            String replacement = switch (code) {
+                case '0' -> "<black>";
+                case '1' -> "<dark_blue>";
+                case '2' -> "<dark_green>";
+                case '3' -> "<dark_aqua>";
+                case '4' -> "<dark_red>";
+                case '5' -> "<dark_purple>";
+                case '6' -> "<gold>";
+                case '7' -> "<#a6adc8>";
+                case '8' -> "<#6c7086>";
+                case '9' -> "<#89b4fa>";
+                case 'a' -> "<#a6e3a1>";
+                case 'b' -> "<#89dceb>";
+                case 'c' -> "<#f38ba8>";
+                case 'd' -> "<#f5c2e7>";
+                case 'e' -> "<#f9e2af>";
+                case 'f' -> "<#cdd6f4>";
+                case 'k' -> "<obfuscated>";
+                case 'l' -> "<bold>";
+                case 'm' -> "<strikethrough>";
+                case 'n' -> "<underlined>";
+                case 'o' -> "<italic>";
+                case 'r' -> "<reset>";
+                default -> "";
+            };
+            codeMatcher.appendReplacement(finalSb, replacement);
+        }
+        codeMatcher.appendTail(finalSb);
+        return finalSb.toString();
     }
 
     @Override
