@@ -47,7 +47,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)[&§]#([A-Fa-f0-9]{6})");
     private static final Pattern LEGACY_CODE_PATTERN = Pattern.compile("(?i)[&§]([0-9a-fk-or])");
 
-    // Cached Reflection for Nexo API (com.nexomc.nexo.api.NexoItems)
     private Method nexoItemFromIdMethod;
     private Method nexoBuilderBuildMethod;
 
@@ -66,7 +65,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         registerCmd("hat");
         registerCmd("rename");
 
-        getLogger().info("AntiArmorTrim v2.4.0 (Catppuccin + Nexo Hats) enabled!");
+        getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + Nexo Hat Replacer) enabled!");
     }
 
     private void registerCmd(String name) {
@@ -79,6 +78,15 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     @Override
     public void onDisable() {
+        // Restore all online players' helmets before shutdown so no cosmetic state is left in inventory
+        if (guiManager != null) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                ItemStack helmet = player.getInventory().getHelmet();
+                if (guiManager.isCustomHatItem(helmet)) {
+                    player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+                }
+            }
+        }
         getLogger().info("AntiArmorTrim disabled.");
     }
 
@@ -90,10 +98,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return guiManager;
     }
 
-    /**
-     * Dynamically fetches a custom ItemStack from Nexo by its item ID.
-     * Returns null if Nexo is not installed or the item ID does not exist in Nexo.
-     */
     @Nullable
     public ItemStack getNexoItem(String itemId) {
         if (itemId == null || itemId.isBlank()) return null;
@@ -318,6 +322,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                     return true;
                 }
                 reloadConfig();
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    guiManager.applyAllSavedTrims(online);
+                }
                 sender.sendMessage(getMessage("reload-success"));
                 return true;
             }
