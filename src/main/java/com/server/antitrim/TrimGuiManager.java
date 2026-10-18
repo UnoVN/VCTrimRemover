@@ -1,6 +1,7 @@
 package com.server.antitrim;
 
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
@@ -10,6 +11,9 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -23,6 +27,7 @@ import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.trim.ArmorTrim;
 import org.bukkit.inventory.meta.trim.TrimMaterial;
@@ -30,9 +35,11 @@ import org.bukkit.inventory.meta.trim.TrimPattern;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,23 +52,17 @@ public class TrimGuiManager implements Listener {
     private final AntiArmorTrim plugin;
     private final Set<UUID> pendingRenamePlayers = ConcurrentHashMap.newKeySet();
     private final Set<UUID> pendingAddHatPlayers = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, String> pendingHatNameEdit = new ConcurrentHashMap<>();
+    private final Map<UUID, String> pendingHatLoreEdit = new ConcurrentHashMap<>();
 
     private static final Map<String, PatternOption> PATTERNS = new LinkedHashMap<>();
     private static final Map<String, MaterialOption> MATERIALS = new LinkedHashMap<>();
 
-    // Reflection methods for Paper 1.21.4 - 1.21.11 Data Components
-    private static final Method GET_ITEM_MODEL_METHOD;
     private static final Method SET_ITEM_MODEL_METHOD;
-    private static final Method HAS_EQUIPPABLE_METHOD;
     private static final Method GET_EQUIPPABLE_METHOD;
     private static final Method SET_EQUIPPABLE_METHOD;
     private static final Method EQUIP_SET_SLOT_METHOD;
-    private static final Method EQUIP_GET_MODEL_METHOD;
-    private static final Method EQUIP_SET_MODEL_METHOD;
-    private static final Method EQUIP_GET_OVERLAY_METHOD;
-    private static final Method EQUIP_SET_OVERLAY_METHOD;
-    private static final Method GET_CMD_COMPONENT_METHOD;
-    private static final Method SET_CMD_COMPONENT_METHOD;
+    private static final Method EQUIP_SET_DAMAGE_ON_HURT_METHOD;
 
     public enum MenuType {
         DECOR_HUB,
@@ -69,54 +70,33 @@ public class TrimGuiManager implements Listener {
         TRIM_SLOT,
         HAT_STUDIO,
         HAT_ADMIN,
+        HAT_EDITOR,
         RENAME_STUDIO
     }
 
     static {
-        Method getItemModel = null, setItemModel = null;
-        Method hasEquippable = null, getEquippable = null, setEquippable = null;
-        Method equipSetSlot = null, equipGetModel = null, equipSetModel = null;
-        Method equipGetOverlay = null, equipSetOverlay = null;
-        Method getCmdComp = null, setCmdComp = null;
+        Method setItemModel = null;
+        Method getEquippable = null, setEquippable = null, equipSetSlot = null, equipSetDmgOnHurt = null;
 
         try {
-            getItemModel = ItemMeta.class.getMethod("getItemModel");
             setItemModel = ItemMeta.class.getMethod("setItemModel", NamespacedKey.class);
         } catch (Throwable ignored) {
         }
 
         try {
             Class<?> equipClass = Class.forName("org.bukkit.inventory.meta.components.EquippableComponent");
-            hasEquippable = ItemMeta.class.getMethod("hasEquippable");
             getEquippable = ItemMeta.class.getMethod("getEquippable");
             setEquippable = ItemMeta.class.getMethod("setEquippable", equipClass);
             equipSetSlot = equipClass.getMethod("setSlot", EquipmentSlot.class);
-            equipGetModel = equipClass.getMethod("getModel");
-            equipSetModel = equipClass.getMethod("setModel", NamespacedKey.class);
-            equipGetOverlay = equipClass.getMethod("getCameraOverlay");
-            equipSetOverlay = equipClass.getMethod("setCameraOverlay", NamespacedKey.class);
+            equipSetDmgOnHurt = equipClass.getMethod("setDamageOnHurt", boolean.class);
         } catch (Throwable ignored) {
         }
 
-        try {
-            Class<?> cmdClass = Class.forName("org.bukkit.inventory.meta.components.CustomModelDataComponent");
-            getCmdComp = ItemMeta.class.getMethod("getCustomModelDataComponent");
-            setCmdComp = ItemMeta.class.getMethod("setCustomModelDataComponent", cmdClass);
-        } catch (Throwable ignored) {
-        }
-
-        GET_ITEM_MODEL_METHOD = getItemModel;
         SET_ITEM_MODEL_METHOD = setItemModel;
-        HAS_EQUIPPABLE_METHOD = hasEquippable;
         GET_EQUIPPABLE_METHOD = getEquippable;
         SET_EQUIPPABLE_METHOD = setEquippable;
         EQUIP_SET_SLOT_METHOD = equipSetSlot;
-        EQUIP_GET_MODEL_METHOD = equipGetModel;
-        EQUIP_SET_MODEL_METHOD = equipSetModel;
-        EQUIP_GET_OVERLAY_METHOD = equipGetOverlay;
-        EQUIP_SET_OVERLAY_METHOD = equipSetOverlay;
-        GET_CMD_COMPONENT_METHOD = getCmdComp;
-        SET_CMD_COMPONENT_METHOD = setCmdComp;
+        EQUIP_SET_DAMAGE_ON_HURT_METHOD = equipSetDmgOnHurt;
 
         // All 18 Minecraft 1.21 Trim Patterns
         addPattern("sentry", "Sentry", Material.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -200,7 +180,7 @@ public class TrimGuiManager implements Listener {
     }
 
     // =========================================================================
-    // PERSISTENT DATA CONTAINER MANAGEMENT (TRIMS & CUSTOM HATS)
+    // PERSISTENT DATA CONTAINER KEYS & HELPERS
     // =========================================================================
     private NamespacedKey getPatternKey(EquipmentSlot slot) {
         return new NamespacedKey(plugin, "trim_pattern_" + slot.name());
@@ -216,6 +196,10 @@ public class TrimGuiManager implements Listener {
 
     private NamespacedKey getItemAppliedHatKey() {
         return new NamespacedKey(plugin, "applied_nexo_hat");
+    }
+
+    private NamespacedKey getOriginalHelmetBytesKey() {
+        return new NamespacedKey(plugin, "original_helmet_bytes");
     }
 
     public String getSavedPatternKey(Player player, EquipmentSlot slot) {
@@ -254,119 +238,187 @@ public class TrimGuiManager implements Listener {
         if (item == null || item.getType().isAir()) return false;
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
-        return meta.getPersistentDataContainer().has(getItemAppliedHatKey(), PersistentDataType.STRING);
+        return meta.getPersistentDataContainer().has(getOriginalHelmetBytesKey(), PersistentDataType.BYTE_ARRAY);
     }
 
     public boolean isTargetHelmet(ItemStack item) {
-        if (item == null) return false;
+        if (item == null || item.getType().isAir()) return false;
         Material type = item.getType();
         return type == Material.DIAMOND_HELMET || type == Material.NETHERITE_HELMET;
     }
 
-    /**
-     * Copies Nexo Hat model, CustomModelData, and EquippableComponent onto a Diamond/Netherite Helmet
-     * while preserving 100% of its armor stats, enchantments, and durability, and disabling Armor Trim.
-     */
-    public boolean applyNexoHatToHelmetItem(ItemStack helmetItem, String hatId) {
-        if (!isTargetHelmet(helmetItem)) return false;
-        ItemMeta helmetMeta = helmetItem.getItemMeta();
-        if (helmetMeta == null) return false;
-
-        // Avoid redundant updates if this exact hat is already applied and no trim is present
-        String currentApplied = helmetMeta.getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
-        boolean hasTrim = (helmetMeta instanceof ArmorMeta am) && am.hasTrim();
-        if (hatId.equalsIgnoreCase(currentApplied) && !hasTrim) {
-            return false;
+    // =========================================================================
+    // NEXO HAT CUSTOMIZATION & HELMET REPLACEMENT ENGINE
+    // =========================================================================
+    public Component getHatDisplayName(String hatId, @Nullable ItemStack nexoTemplate) {
+        String customName = plugin.getConfig().getString("hats.definitions." + hatId + ".display-name");
+        if (customName != null && !customName.isBlank()) {
+            return plugin.parse(customName);
         }
-
-        ItemStack nexoHat = plugin.getNexoItem(hatId);
-        if (nexoHat == null) return false;
-        ItemMeta hatMeta = nexoHat.getItemMeta();
-        if (hatMeta == null) return false;
-
-        // 1. Disable Armor Trim on the helmet when a Custom Hat is equipped
-        if (helmetMeta instanceof ArmorMeta armorMeta && armorMeta.hasTrim()) {
-            armorMeta.setTrim(null);
-        }
-
-        // 2. Copy ItemModel & CustomModelData from the Nexo Hat
-        try {
-            if (GET_ITEM_MODEL_METHOD != null && SET_ITEM_MODEL_METHOD != null) {
-                NamespacedKey modelKey = (NamespacedKey) GET_ITEM_MODEL_METHOD.invoke(hatMeta);
-                if (modelKey == null) {
-                    modelKey = NamespacedKey.fromString("nexo:" + hatId);
-                }
-                SET_ITEM_MODEL_METHOD.invoke(helmetMeta, modelKey);
+        if (nexoTemplate != null && nexoTemplate.hasItemMeta()) {
+            ItemMeta meta = nexoTemplate.getItemMeta();
+            if (meta != null && meta.hasDisplayName() && meta.displayName() != null) {
+                return meta.displayName();
             }
-            if (GET_CMD_COMPONENT_METHOD != null && SET_CMD_COMPONENT_METHOD != null) {
-                Object cmdComp = GET_CMD_COMPONENT_METHOD.invoke(hatMeta);
-                SET_CMD_COMPONENT_METHOD.invoke(helmetMeta, cmdComp);
-            } else if (hatMeta.hasCustomModelData()) {
-                helmetMeta.setCustomModelData(hatMeta.getCustomModelData());
-            } else {
-                helmetMeta.setCustomModelData(null);
-            }
-        } catch (Throwable ignored) {
         }
+        return plugin.parse("<#cba6f7>" + hatId);
+    }
 
-        // 3. Configure EquippableComponent so the 3D Nexo Hat renders on the head instead of vanilla armor layer
-        try {
-            if (GET_EQUIPPABLE_METHOD != null && SET_EQUIPPABLE_METHOD != null && EQUIP_SET_SLOT_METHOD != null) {
-                Object helmetEquip = GET_EQUIPPABLE_METHOD.invoke(helmetMeta);
-                EQUIP_SET_SLOT_METHOD.invoke(helmetEquip, EquipmentSlot.HEAD);
-
-                NamespacedKey hatEquipModel = null;
-                NamespacedKey hatOverlay = null;
-                if (HAS_EQUIPPABLE_METHOD != null && (boolean) HAS_EQUIPPABLE_METHOD.invoke(hatMeta)) {
-                    Object nexoEquip = GET_EQUIPPABLE_METHOD.invoke(hatMeta);
-                    if (EQUIP_GET_MODEL_METHOD != null) {
-                        hatEquipModel = (NamespacedKey) EQUIP_GET_MODEL_METHOD.invoke(nexoEquip);
-                    }
-                    if (EQUIP_GET_OVERLAY_METHOD != null) {
-                        hatOverlay = (NamespacedKey) EQUIP_GET_OVERLAY_METHOD.invoke(nexoEquip);
-                    }
-                }
-                if (EQUIP_SET_MODEL_METHOD != null) {
-                    EQUIP_SET_MODEL_METHOD.invoke(helmetEquip, hatEquipModel);
-                }
-                if (EQUIP_SET_OVERLAY_METHOD != null) {
-                    EQUIP_SET_OVERLAY_METHOD.invoke(helmetEquip, hatOverlay);
-                }
-                SET_EQUIPPABLE_METHOD.invoke(helmetMeta, helmetEquip);
+    public List<Component> getHatCustomLore(String hatId, @Nullable ItemStack nexoTemplate) {
+        List<Component> lore = new ArrayList<>();
+        String path = "hats.definitions." + hatId + ".lore";
+        if (plugin.getConfig().contains(path)) {
+            for (String line : plugin.getConfig().getStringList(path)) {
+                lore.add(plugin.parse(line));
             }
-        } catch (Throwable ignored) {
+            return lore;
         }
-
-        // 4. Mark the helmet with the applied Nexo Hat ID
-        helmetMeta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
-        helmetItem.setItemMeta(helmetMeta);
-        return true;
+        if (nexoTemplate != null && nexoTemplate.hasItemMeta()) {
+            ItemMeta meta = nexoTemplate.getItemMeta();
+            if (meta != null && meta.hasLore() && meta.lore() != null) {
+                lore.addAll(meta.lore());
+            }
+        }
+        return lore;
     }
 
     /**
-     * Restores a modified Diamond/Netherite Helmet back to its original vanilla appearance.
+     * Replaces a Diamond/Netherite helmet with a genuine clone of the Nexo Hat ItemStack
+     * so 100% of Nexo's 3D models/textures/tints render accurately, while embedding the original
+     * helmet's bytes, enchantments, durability, and armor attributes.
      */
-    public boolean stripCustomHatFromItem(ItemStack item) {
-        if (!isCustomHatItem(item)) return false;
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) return false;
+    @Nullable
+    public ItemStack createCosmeticHatFromHelmet(ItemStack baseHelmet, String hatId) {
+        if (isCustomHatItem(baseHelmet)) {
+            baseHelmet = restoreOriginalHelmet(baseHelmet);
+        }
+        if (!isTargetHelmet(baseHelmet)) return null;
 
-        meta.getPersistentDataContainer().remove(getItemAppliedHatKey());
+        ItemStack nexoHat = plugin.getNexoItem(hatId);
+        if (nexoHat == null) return null;
+
+        // Clean any active Armor Trim on the base helmet before serializing
+        ItemStack cleanBase = baseHelmet.clone();
+        ItemMeta cleanBaseMeta = cleanBase.getItemMeta();
+        if (cleanBaseMeta instanceof ArmorMeta am && am.hasTrim()) {
+            am.setTrim(null);
+            cleanBase.setItemMeta(cleanBaseMeta);
+        }
+
+        byte[] serializedHelmet = cleanBase.serializeAsBytes();
+
+        ItemStack hatStack = nexoHat.clone();
+        hatStack.setAmount(1);
+        ItemMeta hatMeta = hatStack.getItemMeta();
+        if (hatMeta == null || cleanBaseMeta == null) return null;
+
+        // 1. Set Hat Display Name
+        hatMeta.displayName(getHatDisplayName(hatId, nexoHat));
+
+        // 2. Build Lore: Hat Custom Lore + Base Armor Info (with Sprite)
+        List<Component> combinedLore = new ArrayList<>(getHatCustomLore(hatId, nexoHat));
+        String baseSprite = plugin.getItemSpriteTag(cleanBase.getType());
+        Component baseNameComp = cleanBaseMeta.hasDisplayName() && cleanBaseMeta.displayName() != null
+                ? cleanBaseMeta.displayName()
+                : plugin.parse(cleanBase.getType() == Material.NETHERITE_HELMET
+                ? "<#cba6f7>Netherite Helmet"
+                : "<#89dceb>Diamond Helmet");
+
+        List<String> baseLoreFormat = plugin.getConfig().getStringList("gui.hat-base-armor-lore");
+        if (baseLoreFormat.isEmpty()) {
+            baseLoreFormat = List.of("", "<base_icon> <#a6adc8>Base Armor: <base_name>");
+        }
+        for (String line : baseLoreFormat) {
+            combinedLore.add(plugin.parse(line,
+                    Placeholder.parsed("base_icon", baseSprite),
+                    Placeholder.component("base_name", baseNameComp)));
+        }
+        hatMeta.lore(combinedLore);
+
+        // 3. Copy all Enchantments from the base helmet & ensure they are visible
+        for (Enchantment ench : new ArrayList<>(hatMeta.getEnchants().keySet())) {
+            hatMeta.removeEnchant(ench);
+        }
+        for (Map.Entry<Enchantment, Integer> entry : cleanBaseMeta.getEnchants().entrySet()) {
+            hatMeta.addEnchant(entry.getKey(), entry.getValue(), true);
+        }
+        hatMeta.removeItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES);
+
+        // 4. Copy Armor Attributes (Armor, Armor Toughness, Knockback Resistance) from the base helmet
+        Multimap<Attribute, AttributeModifier> modifiers = cleanBaseMeta.hasAttributeModifiers()
+                ? cleanBaseMeta.getAttributeModifiers()
+                : cleanBase.getType().getDefaultAttributeModifiers(EquipmentSlot.HEAD);
+        hatMeta.setAttributeModifiers(modifiers);
+
+        // 5. Sync Unbreakable & Durability (Force MaxStackSize = 1 before setting MaxDamage on Paper 1.21.11)
         try {
-            if (SET_ITEM_MODEL_METHOD != null) {
-                SET_ITEM_MODEL_METHOD.invoke(meta, new Object[]{null});
+            hatMeta.setMaxStackSize(1);
+        } catch (Throwable ignored) {
+        }
+
+        hatMeta.setUnbreakable(cleanBaseMeta.isUnbreakable());
+        if (hatMeta instanceof Damageable hatDamageable && cleanBaseMeta instanceof Damageable baseDamageable) {
+            try {
+                int maxDurability = baseDamageable.hasMaxDamage()
+                        ? baseDamageable.getMaxDamage()
+                        : cleanBase.getType().getMaxDurability();
+                if (maxDurability > 0) {
+                    hatDamageable.setMaxDamage(maxDurability);
+                }
+                hatDamageable.setDamage(Math.max(0, baseDamageable.getDamage()));
+            } catch (Throwable ignored) {
             }
-            if (SET_EQUIPPABLE_METHOD != null) {
-                SET_EQUIPPABLE_METHOD.invoke(meta, new Object[]{null});
-            }
-            if (SET_CMD_COMPONENT_METHOD != null) {
-                SET_CMD_COMPONENT_METHOD.invoke(meta, new Object[]{null});
+        }
+
+        // 6. Ensure EquippableComponent has HEAD slot and takes durability damage in PvP
+        try {
+            if (GET_EQUIPPABLE_METHOD != null && SET_EQUIPPABLE_METHOD != null && EQUIP_SET_SLOT_METHOD != null) {
+                Object equipComp = GET_EQUIPPABLE_METHOD.invoke(hatMeta);
+                EQUIP_SET_SLOT_METHOD.invoke(equipComp, EquipmentSlot.HEAD);
+                if (EQUIP_SET_DAMAGE_ON_HURT_METHOD != null) {
+                    EQUIP_SET_DAMAGE_ON_HURT_METHOD.invoke(equipComp, true);
+                }
+                SET_EQUIPPABLE_METHOD.invoke(hatMeta, equipComp);
             }
         } catch (Throwable ignored) {
         }
-        meta.setCustomModelData(null);
-        item.setItemMeta(meta);
-        return true;
+
+        // 7. Store original helmet bytes & hat ID in PDC
+        PersistentDataContainer pdc = hatMeta.getPersistentDataContainer();
+        pdc.set(getOriginalHelmetBytesKey(), PersistentDataType.BYTE_ARRAY, serializedHelmet);
+        pdc.set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
+
+        hatStack.setItemMeta(hatMeta);
+        return hatStack;
+    }
+
+    /**
+     * Restores the original Diamond/Netherite helmet from a Cosmetic Hat ItemStack
+     * and synchronizes any durability changes incurred during combat.
+     */
+    public ItemStack restoreOriginalHelmet(ItemStack hatItem) {
+        if (!isCustomHatItem(hatItem)) return hatItem;
+        ItemMeta hatMeta = hatItem.getItemMeta();
+        if (hatMeta == null) return hatItem;
+
+        byte[] bytes = hatMeta.getPersistentDataContainer().get(getOriginalHelmetBytesKey(), PersistentDataType.BYTE_ARRAY);
+        if (bytes == null || bytes.length == 0) return hatItem;
+
+        try {
+            ItemStack restored = ItemStack.deserializeBytes(bytes);
+            if (hatMeta instanceof Damageable hatDmg && restored.getItemMeta() instanceof Damageable restoredDmg) {
+                int currentDamage = hatDmg.getDamage();
+                int maxDurability = restored.getType().getMaxDurability();
+                if (maxDurability > 0 && currentDamage >= maxDurability) {
+                    return new ItemStack(Material.AIR);
+                }
+                restoredDmg.setDamage(Math.max(0, currentDamage));
+                restored.setItemMeta((ItemMeta) restoredDmg);
+            }
+            return restored;
+        } catch (Throwable ignored) {
+            return hatItem;
+        }
     }
 
     public ArmorTrim buildArmorTrim(String patternKey, String materialKey) {
@@ -382,18 +434,32 @@ public class TrimGuiManager implements Listener {
     public void applySavedTrimToSlot(Player player, EquipmentSlot slot) {
         if (slot == EquipmentSlot.HEAD) {
             String savedHat = getSavedHatId(player);
-            if (canUseHat(player) && savedHat != null) {
-                ItemStack headItem = player.getInventory().getHelmet();
-                if (isTargetHelmet(headItem)) {
-                    if (applyNexoHatToHelmetItem(headItem, savedHat)) {
-                        player.getInventory().setHelmet(headItem);
-                    }
-                }
-                return;
-            } else {
-                ItemStack headItem = player.getInventory().getHelmet();
+            ItemStack headItem = player.getInventory().getHelmet();
+
+            if (canUseHat(player) && savedHat != null && plugin.getNexoItem(savedHat) != null) {
                 if (isCustomHatItem(headItem)) {
-                    stripCustomHatFromItem(headItem);
+                    ItemMeta meta = headItem.getItemMeta();
+                    String currentHatId = meta != null
+                            ? meta.getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING)
+                            : null;
+                    if (!savedHat.equalsIgnoreCase(currentHatId)) {
+                        ItemStack restored = restoreOriginalHelmet(headItem);
+                        ItemStack updatedHat = createCosmeticHatFromHelmet(restored, savedHat);
+                        if (updatedHat != null) {
+                            player.getInventory().setHelmet(updatedHat);
+                        }
+                    }
+                    return;
+                } else if (isTargetHelmet(headItem)) {
+                    ItemStack cosmeticHat = createCosmeticHatFromHelmet(headItem, savedHat);
+                    if (cosmeticHat != null) {
+                        player.getInventory().setHelmet(cosmeticHat);
+                    }
+                    return;
+                }
+            } else {
+                if (isCustomHatItem(headItem)) {
+                    headItem = restoreOriginalHelmet(headItem);
                     player.getInventory().setHelmet(headItem);
                 }
             }
@@ -420,18 +486,15 @@ public class TrimGuiManager implements Listener {
     }
 
     public void applyAllSavedTrims(Player player) {
-        // Strip custom hat visuals from any unequipped helmets in main inventory (0..35) and off-hand
         for (int i = 0; i < 36; i++) {
             ItemStack invItem = player.getInventory().getItem(i);
             if (isCustomHatItem(invItem)) {
-                stripCustomHatFromItem(invItem);
-                player.getInventory().setItem(i, invItem);
+                player.getInventory().setItem(i, restoreOriginalHelmet(invItem));
             }
         }
         ItemStack offHand = player.getInventory().getItemInOffHand();
         if (isCustomHatItem(offHand)) {
-            stripCustomHatFromItem(offHand);
-            player.getInventory().setItemInOffHand(offHand);
+            player.getInventory().setItemInOffHand(restoreOriginalHelmet(offHand));
         }
 
         applySavedTrimToSlot(player, EquipmentSlot.HEAD);
@@ -440,14 +503,22 @@ public class TrimGuiManager implements Listener {
         applySavedTrimToSlot(player, EquipmentSlot.FEET);
     }
 
+    public void forceRefreshEquippedHat(Player player) {
+        ItemStack headItem = player.getInventory().getHelmet();
+        if (isCustomHatItem(headItem)) {
+            player.getInventory().setHelmet(restoreOriginalHelmet(headItem));
+        }
+        applySavedTrimToSlot(player, EquipmentSlot.HEAD);
+    }
+
     // =========================================================================
-    // 1. DECORATION HUB MENU (/decor) - 3 BUTTONS
+    // 1. DECORATION HUB MENU (/decor)
     // =========================================================================
     public void openDecorHub(Player player) {
         String rawTitle = plugin.getConfig().getString("gui.decor-title", "<#cba6f7><bold>Decoration Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null, null);
         Inventory inv = Bukkit.createInventory(holder, 27, title);
         holder.setInventory(inv);
 
@@ -456,7 +527,7 @@ public class TrimGuiManager implements Listener {
             inv.setItem(i, border);
         }
 
-        // Slot 11: Armor Trim Studio Button
+        // Slot 11: Armor Trim Studio
         ItemStack trimBtn = createCleanIconStack(Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
         ItemMeta trimMeta = trimBtn.getItemMeta();
         if (trimMeta != null) {
@@ -472,7 +543,7 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(11, trimBtn);
 
-        // Slot 13: Custom Hat Studio Button (/hat)
+        // Slot 13: Custom Hat Studio
         ItemStack hatBtn = createCleanIconStack(Material.NETHERITE_HELMET);
         ItemMeta hatMeta = hatBtn.getItemMeta();
         if (hatMeta != null) {
@@ -488,7 +559,7 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(13, hatBtn);
 
-        // Slot 15: Item Rename Studio Button (/rename)
+        // Slot 15: Item Rename Studio
         ItemStack renameBtn = createCleanIconStack(Material.NAME_TAG);
         ItemMeta renameMeta = renameBtn.getItemMeta();
         if (renameMeta != null) {
@@ -508,14 +579,14 @@ public class TrimGuiManager implements Listener {
     }
 
     // =========================================================================
-    // 2. CUSTOM HAT STUDIO MENU (/hat) & ADMIN HAT MANAGER (/hat admin)
+    // 2. CUSTOM HAT STUDIO (/hat), ADMIN MANAGER & HAT EDITOR GUI
     // =========================================================================
     public void openHatMenu(Player player) {
         String rawTitle = plugin.getConfig().getString("gui.hat-title",
                 "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_STUDIO, null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_STUDIO, null, null);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
         holder.setInventory(inv);
 
@@ -531,28 +602,25 @@ public class TrimGuiManager implements Listener {
         for (String hatId : hatIds) {
             if (slotIndex >= 36) break;
             ItemStack nexoStack = plugin.getNexoItem(hatId);
-            if (nexoStack == null) {
-                continue;
-            }
+            if (nexoStack == null) continue;
 
             boolean selected = hatId.equalsIgnoreCase(currentHat);
             ItemStack icon = nexoStack.clone();
             ItemMeta meta = icon.getItemMeta();
             if (meta != null) {
                 hideAllVanillaTooltips(meta);
-                Component baseName = meta.hasDisplayName() && meta.displayName() != null
-                        ? meta.displayName()
-                        : plugin.parse("<#89dceb>" + hatId);
+                Component displayName = getHatDisplayName(hatId, nexoStack);
                 String prefixSprite = plugin.getItemSpriteTag(Material.NETHERITE_HELMET);
-                meta.displayName(plugin.parse(prefixSprite + " ").append(baseName));
+                meta.displayName(plugin.parse(prefixSprite + " ").append(displayName));
 
                 if (selected) {
                     meta.setEnchantmentGlintOverride(true);
                 }
 
-                List<Component> lore = new ArrayList<>();
-                lore.add(plugin.parse("<#a6adc8>Replaces Diamond & Netherite Helmet"));
-                lore.add(plugin.parse("<#a6adc8>appearance while keeping all stats."));
+                List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
+                if (!lore.isEmpty()) {
+                    lore.add(Component.empty());
+                }
                 appendSelectionOrLockedLore(player, lore, AntiArmorTrim.HAT_PERM, selected);
                 meta.lore(lore);
                 meta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
@@ -584,8 +652,8 @@ public class TrimGuiManager implements Listener {
                 String sprite = plugin.getItemSpriteTag(Material.COMMAND_BLOCK);
                 adminMeta.displayName(plugin.parse(sprite + " <#f38ba8><bold>Admin Hat Manager</bold>"));
                 List<Component> adminLore = new ArrayList<>();
-                adminLore.add(plugin.parse("<#a6adc8>Click to add Nexo hat IDs or"));
-                adminLore.add(plugin.parse("<#a6adc8>delete broken hats from config."));
+                adminLore.add(plugin.parse("<#a6adc8>Manage Nexo hats, edit display"));
+                adminLore.add(plugin.parse("<#a6adc8>names, lore, or remove broken IDs."));
                 adminMeta.lore(adminLore);
                 adminBtn.setItemMeta(adminMeta);
             }
@@ -600,7 +668,7 @@ public class TrimGuiManager implements Listener {
                 "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold>");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_ADMIN, null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_ADMIN, null, null);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
         holder.setInventory(inv);
 
@@ -622,12 +690,13 @@ public class TrimGuiManager implements Listener {
                 ItemMeta meta = icon.getItemMeta();
                 if (meta != null) {
                     hideAllVanillaTooltips(meta);
-                    String sprite = plugin.getItemSpriteTag(Material.EMERALD);
-                    meta.displayName(plugin.parse(sprite + " <#a6e3a1><bold>" + hatId + "</bold>"));
-                    List<Component> lore = new ArrayList<>();
-                    lore.add(plugin.parse("<#a6adc8>Status: <#a6e3a1>Valid Nexo Item"));
+                    Component displayName = getHatDisplayName(hatId, nexoStack);
+                    meta.displayName(displayName.append(plugin.parse(" <#6c7086>(" + hatId + ")")));
+
+                    List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
                     lore.add(Component.empty());
-                    lore.add(plugin.parse("<#f38ba8>▸ Click to delete this hat"));
+                    lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Edit Display Name & Lore"));
+                    lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Hat"));
                     meta.lore(lore);
                     meta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
                     icon.setItemMeta(meta);
@@ -639,9 +708,9 @@ public class TrimGuiManager implements Listener {
                     String sprite = plugin.getItemSpriteTag(Material.BARRIER);
                     meta.displayName(plugin.parse(sprite + " <#f38ba8><bold>Broken ID: " + hatId + "</bold>"));
                     List<Component> lore = new ArrayList<>();
-                    lore.add(plugin.parse("<#a6adc8>Status: <#f38ba8>Not found in Nexo!"));
+                    lore.add(plugin.parse("<#a6adc8>Not found in Nexo!"));
                     lore.add(Component.empty());
-                    lore.add(plugin.parse("<#f38ba8>▸ Click to delete this broken entry"));
+                    lore.add(plugin.parse("<#f38ba8>Click to delete this broken entry"));
                     meta.lore(lore);
                     meta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
                     icon.setItemMeta(meta);
@@ -650,7 +719,7 @@ public class TrimGuiManager implements Listener {
             inv.setItem(slotIndex++, icon);
         }
 
-        inv.setItem(45, createBackButton("<#f9e2af><bold>Back to Hat Studio</bold>"));
+        inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
         ItemStack addBtn = createCleanIconStack(Material.ANVIL);
         ItemMeta addMeta = addBtn.getItemMeta();
@@ -659,13 +728,111 @@ public class TrimGuiManager implements Listener {
             addMeta.displayName(plugin.parse(sprite + " <#a6e3a1><bold>Add New Nexo Hat</bold>"));
             List<Component> addLore = new ArrayList<>();
             addLore.add(plugin.parse("<#a6adc8>Click to type a Nexo Item ID"));
-            addLore.add(plugin.parse("<#a6adc8>in chat and add it to this menu."));
+            addLore.add(plugin.parse("<#a6adc8>in chat and add it to the studio."));
             addMeta.lore(addLore);
             addBtn.setItemMeta(addMeta);
         }
         inv.setItem(49, addBtn);
 
         player.openInventory(inv);
+    }
+
+    public void openHatEditorMenu(Player player, String hatId) {
+        String rawTitle = plugin.getConfig().getString("gui.hat-editor-title",
+                "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>");
+        Component title = plugin.parse(rawTitle, Placeholder.unparsed("id", hatId));
+
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_EDITOR, null, hatId);
+        Inventory inv = Bukkit.createInventory(holder, 27, title);
+        holder.setInventory(inv);
+
+        ItemStack border = createFiller(Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < 27; i++) {
+            inv.setItem(i, border);
+        }
+
+        ItemStack nexoStack = plugin.getNexoItem(hatId);
+
+        // Slot 10: Edit Display Name
+        ItemStack nameBtn = createCleanIconStack(Material.NAME_TAG);
+        ItemMeta nameMeta = nameBtn.getItemMeta();
+        if (nameMeta != null) {
+            String sprite = plugin.getItemSpriteTag(Material.NAME_TAG);
+            nameMeta.displayName(plugin.parse(sprite + " <#89dceb><bold>Edit Display Name</bold>"));
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#a6adc8>Current: ").append(getHatDisplayName(hatId, nexoStack)));
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set new display name"));
+            lore.add(plugin.parse("<#fab387>Right-Click: <#cdd6f4>Reset to Nexo default"));
+            nameMeta.lore(lore);
+            nameBtn.setItemMeta(nameMeta);
+        }
+        inv.setItem(10, nameBtn);
+
+        // Slot 12: Edit Hat Lore
+        ItemStack loreBtn = createCleanIconStack(Material.WRITABLE_BOOK);
+        ItemMeta loreMeta = loreBtn.getItemMeta();
+        if (loreMeta != null) {
+            String sprite = plugin.getItemSpriteTag(Material.WRITABLE_BOOK);
+            loreMeta.displayName(plugin.parse(sprite + " <#cba6f7><bold>Edit Hat Lore</bold>"));
+            List<Component> lore = new ArrayList<>();
+            List<Component> currentLore = getHatCustomLore(hatId, nexoStack);
+            if (currentLore.isEmpty()) {
+                lore.add(plugin.parse("<#6c7086>No lore configured"));
+            } else {
+                lore.addAll(currentLore);
+            }
+            lore.add(Component.empty());
+            lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set or append lore in chat"));
+            lore.add(plugin.parse("<#fab387>Right-Click: <#cdd6f4>Clear custom lore"));
+            loreMeta.lore(lore);
+            loreBtn.setItemMeta(loreMeta);
+        }
+        inv.setItem(12, loreBtn);
+
+        // Slot 14: Live Preview (Simulated on Netherite Helmet)
+        ItemStack sampleHelmet = new ItemStack(Material.NETHERITE_HELMET);
+        ItemStack previewHat = createCosmeticHatFromHelmet(sampleHelmet, hatId);
+        if (previewHat != null) {
+            inv.setItem(14, previewHat);
+        }
+
+        // Slot 16: Delete Hat
+        ItemStack deleteBtn = createCleanIconStack(Material.BARRIER);
+        ItemMeta delMeta = deleteBtn.getItemMeta();
+        if (delMeta != null) {
+            String sprite = plugin.getItemSpriteTag(Material.BARRIER);
+            delMeta.displayName(plugin.parse(sprite + " <#f38ba8><bold>Delete Hat</bold>"));
+            List<Component> lore = new ArrayList<>();
+            lore.add(plugin.parse("<#a6adc8>Remove <#f9e2af>" + hatId + " <#a6adc8>from the studio."));
+            delMeta.lore(lore);
+            deleteBtn.setItemMeta(delMeta);
+        }
+        inv.setItem(16, deleteBtn);
+
+        // Slot 18: Back to Admin Hat Manager
+        inv.setItem(18, createBackButton("<#f9e2af><bold>Back</bold>"));
+
+        player.openInventory(inv);
+    }
+
+    private void deleteHatFromConfig(Player player, String hatId) {
+        List<String> hats = new ArrayList<>(plugin.getConfig().getStringList("hats.items"));
+        if (hats.removeIf(h -> h.equalsIgnoreCase(hatId))) {
+            plugin.getConfig().set("hats.items", hats);
+            plugin.getConfig().set("hats.definitions." + hatId, null);
+            plugin.saveConfig();
+
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (hatId.equalsIgnoreCase(getSavedHatId(online))) {
+                    setSavedHatId(online, null);
+                    forceRefreshEquippedHat(online);
+                }
+            }
+
+            player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+            player.sendMessage(plugin.getMessage("hat-admin-removed", Placeholder.unparsed("id", hatId)));
+        }
     }
 
     // =========================================================================
@@ -676,7 +843,7 @@ public class TrimGuiManager implements Listener {
                 "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null, null);
         Inventory inv = Bukkit.createInventory(holder, 27, title);
         holder.setInventory(inv);
 
@@ -799,7 +966,7 @@ public class TrimGuiManager implements Listener {
         String rawTitle = plugin.getConfig().getString("gui.main-title", "<#cba6f7><bold>Armor Trim Studio</bold>");
         Component title = plugin.parse(rawTitle);
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null, null);
         Inventory inv = Bukkit.createInventory(holder, 27, title);
         holder.setInventory(inv);
 
@@ -875,7 +1042,7 @@ public class TrimGuiManager implements Listener {
                 Placeholder.unparsed("slot", slotName),
                 Placeholder.parsed("slot_icon", slotSprite));
 
-        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot);
+        TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot, null);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
         holder.setInventory(inv);
 
@@ -1052,6 +1219,13 @@ public class TrimGuiManager implements Listener {
         };
     }
 
+    private void clearPendingPrompts(UUID uuid) {
+        pendingRenamePlayers.remove(uuid);
+        pendingAddHatPlayers.remove(uuid);
+        pendingHatNameEdit.remove(uuid);
+        pendingHatLoreEdit.remove(uuid);
+    }
+
     // =========================================================================
     // GUI INTERACTION & CHAT LISTENERS
     // =========================================================================
@@ -1127,8 +1301,9 @@ public class TrimGuiManager implements Listener {
                 setSavedHatId(player, hatId);
                 applySavedTrimToSlot(player, EquipmentSlot.HEAD);
 
+                Component hatDisplay = getHatDisplayName(hatId, plugin.getNexoItem(hatId));
                 player.playSound(player.getLocation(), Sound.ITEM_ARMOR_EQUIP_NETHERITE, 1f, 1.2f);
-                player.sendMessage(plugin.getMessage("hat-selected", Placeholder.unparsed("hat", hatId)));
+                player.sendMessage(plugin.getMessage("hat-selected", Placeholder.component("hat", hatDisplay)));
                 openHatMenu(player);
             }
             return;
@@ -1149,10 +1324,10 @@ public class TrimGuiManager implements Listener {
 
             if (rawSlot == 49) {
                 player.closeInventory();
-                pendingRenamePlayers.remove(player.getUniqueId());
+                clearPendingPrompts(player.getUniqueId());
                 pendingAddHatPlayers.add(player.getUniqueId());
                 player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
-                player.sendMessage(plugin.getMessage("hat-admin-prompt"));
+                player.sendMessage(plugin.getMessage("hat-admin-prompt-id"));
                 return;
             }
 
@@ -1165,19 +1340,90 @@ public class TrimGuiManager implements Listener {
                 String hatId = meta.getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
                 if (hatId == null) return;
 
-                List<String> hats = new ArrayList<>(plugin.getConfig().getStringList("hats.items"));
-                if (hats.removeIf(h -> h.equalsIgnoreCase(hatId))) {
-                    plugin.getConfig().set("hats.items", hats);
-                    plugin.saveConfig();
-                    player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
-                    player.sendMessage(plugin.getMessage("hat-admin-removed", Placeholder.unparsed("id", hatId)));
+                if (plugin.getNexoItem(hatId) == null || event.isRightClick()) {
+                    deleteHatFromConfig(player, hatId);
                     openHatAdminMenu(player);
+                    return;
                 }
+
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+                openHatEditorMenu(player, hatId);
             }
             return;
         }
 
-        // 4. ITEM RENAME STUDIO (/rename)
+        // 4. ADMIN HAT EDITOR MENU
+        if (menuType == MenuType.HAT_EDITOR) {
+            if (!player.hasPermission(AntiArmorTrim.ADMIN_PERM)) {
+                player.closeInventory();
+                return;
+            }
+            String hatId = holder.getEditingHatId();
+            if (hatId == null) return;
+
+            if (rawSlot == 18) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
+                openHatAdminMenu(player);
+                return;
+            }
+
+            // Slot 10: Edit Display Name
+            if (rawSlot == 10) {
+                if (event.isRightClick()) {
+                    plugin.getConfig().set("hats.definitions." + hatId + ".display-name", null);
+                    plugin.saveConfig();
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        if (hatId.equalsIgnoreCase(getSavedHatId(online))) {
+                            forceRefreshEquippedHat(online);
+                        }
+                    }
+                    player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+                    player.sendMessage(plugin.getMessage("hat-admin-name-reset", Placeholder.unparsed("id", hatId)));
+                    openHatEditorMenu(player, hatId);
+                    return;
+                }
+
+                player.closeInventory();
+                clearPendingPrompts(player.getUniqueId());
+                pendingHatNameEdit.put(player.getUniqueId(), hatId);
+                player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+                player.sendMessage(plugin.getMessage("hat-admin-prompt-name", Placeholder.unparsed("id", hatId)));
+                return;
+            }
+
+            // Slot 12: Edit Hat Lore
+            if (rawSlot == 12) {
+                if (event.isRightClick()) {
+                    plugin.getConfig().set("hats.definitions." + hatId + ".lore", null);
+                    plugin.saveConfig();
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        if (hatId.equalsIgnoreCase(getSavedHatId(online))) {
+                            forceRefreshEquippedHat(online);
+                        }
+                    }
+                    player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+                    player.sendMessage(plugin.getMessage("hat-admin-lore-reset", Placeholder.unparsed("id", hatId)));
+                    openHatEditorMenu(player, hatId);
+                    return;
+                }
+
+                player.closeInventory();
+                clearPendingPrompts(player.getUniqueId());
+                pendingHatLoreEdit.put(player.getUniqueId(), hatId);
+                player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+                player.sendMessage(plugin.getMessage("hat-admin-prompt-lore", Placeholder.unparsed("id", hatId)));
+                return;
+            }
+
+            // Slot 16: Delete Hat
+            if (rawSlot == 16) {
+                deleteHatFromConfig(player, hatId);
+                openHatAdminMenu(player);
+            }
+            return;
+        }
+
+        // 5. ITEM RENAME STUDIO (/rename)
         if (menuType == MenuType.RENAME_STUDIO) {
             if (rawSlot == 18) {
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
@@ -1213,7 +1459,7 @@ public class TrimGuiManager implements Listener {
                 }
 
                 player.closeInventory();
-                pendingAddHatPlayers.remove(player.getUniqueId());
+                clearPendingPrompts(player.getUniqueId());
                 pendingRenamePlayers.add(player.getUniqueId());
                 player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
                 player.sendMessage(plugin.getMessage("rename-prompt"));
@@ -1221,7 +1467,7 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // 5. ARMOR TRIM MAIN MENU (/trim)
+        // 6. ARMOR TRIM MAIN MENU (/trim)
         if (menuType == MenuType.TRIM_MAIN) {
             if (rawSlot == 18) {
                 player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
@@ -1243,7 +1489,7 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // 6. ARMOR TRIM SLOT SUB-MENU
+        // 7. ARMOR TRIM SLOT SUB-MENU
         EquipmentSlot armorSlot = holder.getSlotType();
         if (rawSlot == 45) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f);
@@ -1394,6 +1640,7 @@ public class TrimGuiManager implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
+        // 1. Admin Add New Hat ID
         if (pendingAddHatPlayers.remove(uuid)) {
             event.setCancelled(true);
             String rawId = event.signedMessage().message().trim();
@@ -1422,15 +1669,92 @@ public class TrimGuiManager implements Listener {
                 if (plugin.getNexoItem(rawId) != null) {
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
                     player.sendMessage(plugin.getMessage("hat-admin-added", Placeholder.unparsed("id", rawId)));
+                    openHatEditorMenu(player, rawId);
                 } else {
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
                     player.sendMessage(plugin.getMessage("hat-admin-added-invalid", Placeholder.unparsed("id", rawId)));
+                    openHatAdminMenu(player);
                 }
-                openHatAdminMenu(player);
             });
             return;
         }
 
+        // 2. Admin Edit Hat Display Name
+        String editingNameHatId = pendingHatNameEdit.remove(uuid);
+        if (editingNameHatId != null) {
+            event.setCancelled(true);
+            String rawInput = event.signedMessage().message().trim();
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (rawInput.equalsIgnoreCase("cancel")) {
+                    player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+                    player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+                    openHatEditorMenu(player, editingNameHatId);
+                    return;
+                }
+
+                plugin.getConfig().set("hats.definitions." + editingNameHatId + ".display-name", rawInput);
+                plugin.saveConfig();
+
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    if (editingNameHatId.equalsIgnoreCase(getSavedHatId(online))) {
+                        forceRefreshEquippedHat(online);
+                    }
+                }
+
+                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1.3f);
+                player.sendMessage(plugin.getMessage("hat-admin-name-updated",
+                        Placeholder.unparsed("id", editingNameHatId),
+                        Placeholder.component("name", plugin.parse(rawInput))));
+                openHatEditorMenu(player, editingNameHatId);
+            });
+            return;
+        }
+
+        // 3. Admin Edit Hat Lore
+        String editingLoreHatId = pendingHatLoreEdit.remove(uuid);
+        if (editingLoreHatId != null) {
+            event.setCancelled(true);
+            String rawInput = event.signedMessage().message().trim();
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (rawInput.equalsIgnoreCase("cancel")) {
+                    player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+                    player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+                    openHatEditorMenu(player, editingLoreHatId);
+                    return;
+                }
+
+                String lorePath = "hats.definitions." + editingLoreHatId + ".lore";
+                List<String> newLore;
+                if (rawInput.regionMatches(true, 0, "add ", 0, 4)) {
+                    newLore = new ArrayList<>(plugin.getConfig().getStringList(lorePath));
+                    newLore.add(rawInput.substring(4).trim());
+                } else {
+                    newLore = new ArrayList<>(Arrays.asList(rawInput.split("\\|")));
+                    newLore.replaceAll(String::trim);
+                }
+
+                plugin.getConfig().set(lorePath, newLore);
+                plugin.saveConfig();
+
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    if (editingLoreHatId.equalsIgnoreCase(getSavedHatId(online))) {
+                        forceRefreshEquippedHat(online);
+                    }
+                }
+
+                player.playSound(player.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 1f, 1.2f);
+                player.sendMessage(plugin.getMessage("hat-admin-lore-updated",
+                        Placeholder.unparsed("id", editingLoreHatId)));
+                openHatEditorMenu(player, editingLoreHatId);
+            });
+            return;
+        }
+
+        // 4. Player Item Rename Input
         if (pendingRenamePlayers.remove(uuid)) {
             event.setCancelled(true);
             String rawInput = event.signedMessage().message().trim();
@@ -1451,19 +1775,19 @@ public class TrimGuiManager implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        UUID uuid = event.getPlayer().getUniqueId();
-        pendingRenamePlayers.remove(uuid);
-        pendingAddHatPlayers.remove(uuid);
+        clearPendingPrompts(event.getPlayer().getUniqueId());
     }
 
     public static class TrimMenuHolder implements InventoryHolder {
         private final MenuType menuType;
         private final EquipmentSlot slotType;
+        private final String editingHatId;
         private Inventory inventory;
 
-        public TrimMenuHolder(MenuType menuType, EquipmentSlot slotType) {
+        public TrimMenuHolder(MenuType menuType, EquipmentSlot slotType, String editingHatId) {
             this.menuType = menuType;
             this.slotType = slotType;
+            this.editingHatId = editingHatId;
         }
 
         public MenuType getMenuType() {
@@ -1472,6 +1796,10 @@ public class TrimGuiManager implements Listener {
 
         public EquipmentSlot getSlotType() {
             return slotType;
+        }
+
+        public String getEditingHatId() {
+            return editingHatId;
         }
 
         public void setInventory(Inventory inventory) {
