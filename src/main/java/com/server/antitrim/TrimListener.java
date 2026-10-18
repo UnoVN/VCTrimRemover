@@ -12,8 +12,10 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
@@ -41,8 +43,17 @@ public class TrimListener implements Listener {
     }
 
     private void scanAndClean(Player player) {
+        guiManager.applyAllSavedTrims(player);
+
+        if (!guiManager.canUseHat(player)) {
+            ItemStack helmet = player.getInventory().getHelmet();
+            if (guiManager.isCustomHatItem(helmet)) {
+                guiManager.stripCustomHatFromItem(helmet);
+                player.getInventory().setHelmet(helmet);
+            }
+        }
+
         if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
-            guiManager.applyAllSavedTrims(player);
             return;
         }
 
@@ -74,12 +85,28 @@ public class TrimListener implements Listener {
 
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
-            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
-                guiManager.applySavedTrimToSlot(player, slot);
-            } else {
-                scanAndClean(player);
-            }
+            guiManager.applySavedTrimToSlot(player, slot);
+            scanAndClean(player);
         });
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onDrop(PlayerDropItemEvent event) {
+        ItemStack dropped = event.getItemDrop().getItemStack();
+        if (guiManager.isCustomHatItem(dropped)) {
+            guiManager.stripCustomHatFromItem(dropped);
+            event.getItemDrop().setItemStack(dropped);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onSwapHand(PlayerSwapHandItemsEvent event) {
+        if (guiManager.isCustomHatItem(event.getOffHandItem())) {
+            guiManager.stripCustomHatFromItem(event.getOffHandItem());
+        }
+        if (guiManager.isCustomHatItem(event.getMainHandItem())) {
+            guiManager.stripCustomHatFromItem(event.getMainHandItem());
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -98,6 +125,11 @@ public class TrimListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onClose(InventoryCloseEvent event) {
         if (event.getPlayer() instanceof Player player) {
+            ItemStack cursor = player.getItemOnCursor();
+            if (guiManager.isCustomHatItem(cursor)) {
+                guiManager.stripCustomHatFromItem(cursor);
+                player.setItemOnCursor(cursor);
+            }
             scanAndClean(player);
         }
     }
@@ -106,6 +138,15 @@ public class TrimListener implements Listener {
     public void onClick(InventoryClickEvent event) {
         if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
         if (!(event.getWhoClicked() instanceof Player player)) return;
+
+        // Immediately strip custom hat visual when clicked so players cannot move hat models into chests or cursor
+        if (guiManager.isCustomHatItem(event.getCurrentItem())) {
+            guiManager.stripCustomHatFromItem(event.getCurrentItem());
+        }
+        if (guiManager.isCustomHatItem(event.getCursor())) {
+            guiManager.stripCustomHatFromItem(event.getCursor());
+        }
+
         if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
         boolean triggered = false;
@@ -145,9 +186,15 @@ public class TrimListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPickup(EntityPickupItemEvent event) {
         if (event.getEntity() instanceof Player player) {
+            ItemStack picked = event.getItem().getItemStack();
+            if (guiManager.isCustomHatItem(picked)) {
+                guiManager.stripCustomHatFromItem(picked);
+                event.getItem().setItemStack(picked);
+            }
+
             if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
-            if (hasArmorTrim(event.getItem().getItemStack())) {
+            if (hasArmorTrim(picked)) {
                 event.setCancelled(true);
                 event.getItem().remove();
                 player.sendMessage(plugin.getMessage("remove-trim"));
