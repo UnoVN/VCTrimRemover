@@ -49,7 +49,7 @@ public class TrimGuiManager implements Listener {
     private static final Map<String, PatternOption> PATTERNS = new LinkedHashMap<>();
     private static final Map<String, MaterialOption> MATERIALS = new LinkedHashMap<>();
 
-    // Reflection methods for Paper 1.21.4 - 1.21.11 Data Components (ItemModel & EquippableComponent)
+    // Reflection methods for Paper 1.21.4 - 1.21.11 Data Components
     private static final Method GET_ITEM_MODEL_METHOD;
     private static final Method SET_ITEM_MODEL_METHOD;
     private static final Method HAS_EQUIPPABLE_METHOD;
@@ -269,12 +269,20 @@ public class TrimGuiManager implements Listener {
      */
     public boolean applyNexoHatToHelmetItem(ItemStack helmetItem, String hatId) {
         if (!isTargetHelmet(helmetItem)) return false;
+        ItemMeta helmetMeta = helmetItem.getItemMeta();
+        if (helmetMeta == null) return false;
+
+        // Avoid redundant updates if this exact hat is already applied and no trim is present
+        String currentApplied = helmetMeta.getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
+        boolean hasTrim = (helmetMeta instanceof ArmorMeta am) && am.hasTrim();
+        if (hatId.equalsIgnoreCase(currentApplied) && !hasTrim) {
+            return false;
+        }
+
         ItemStack nexoHat = plugin.getNexoItem(hatId);
         if (nexoHat == null) return false;
-
-        ItemMeta helmetMeta = helmetItem.getItemMeta();
         ItemMeta hatMeta = nexoHat.getItemMeta();
-        if (helmetMeta == null || hatMeta == null) return false;
+        if (hatMeta == null) return false;
 
         // 1. Disable Armor Trim on the helmet when a Custom Hat is equipped
         if (helmetMeta instanceof ArmorMeta armorMeta && armorMeta.hasTrim()) {
@@ -301,7 +309,7 @@ public class TrimGuiManager implements Listener {
         } catch (Throwable ignored) {
         }
 
-        // 3. Configure EquippableComponent so the 3D Nexo Hat renders on the head instead of vanilla diamond/netherite layer
+        // 3. Configure EquippableComponent so the 3D Nexo Hat renders on the head instead of vanilla armor layer
         try {
             if (GET_EQUIPPABLE_METHOD != null && SET_EQUIPPABLE_METHOD != null && EQUIP_SET_SLOT_METHOD != null) {
                 Object helmetEquip = GET_EQUIPPABLE_METHOD.invoke(helmetMeta);
@@ -351,6 +359,9 @@ public class TrimGuiManager implements Listener {
             if (SET_EQUIPPABLE_METHOD != null) {
                 SET_EQUIPPABLE_METHOD.invoke(meta, new Object[]{null});
             }
+            if (SET_CMD_COMPONENT_METHOD != null) {
+                SET_CMD_COMPONENT_METHOD.invoke(meta, new Object[]{null});
+            }
         } catch (Throwable ignored) {
         }
         meta.setCustomModelData(null);
@@ -368,11 +379,7 @@ public class TrimGuiManager implements Listener {
         return null;
     }
 
-    /**
-     * Synchronizes the player's HEAD slot (Custom Hat takes priority over Trim) and applies saved Trims.
-     */
     public void applySavedTrimToSlot(Player player, EquipmentSlot slot) {
-        // For HEAD slot: if player has a Custom Hat active, apply the Custom Hat and DO NOT apply Trim
         if (slot == EquipmentSlot.HEAD) {
             String savedHat = getSavedHatId(player);
             if (canUseHat(player) && savedHat != null) {
@@ -380,12 +387,10 @@ public class TrimGuiManager implements Listener {
                 if (isTargetHelmet(headItem)) {
                     if (applyNexoHatToHelmetItem(headItem, savedHat)) {
                         player.getInventory().setHelmet(headItem);
-                        return;
                     }
                 }
                 return;
             } else {
-                // No active hat selected -> strip any leftover hat visual on the equipped helmet
                 ItemStack headItem = player.getInventory().getHelmet();
                 if (isCustomHatItem(headItem)) {
                     stripCustomHatFromItem(headItem);
@@ -415,13 +420,18 @@ public class TrimGuiManager implements Listener {
     }
 
     public void applyAllSavedTrims(Player player) {
-        // Strip custom hat visuals from any unequipped helmets in the main inventory (0..35)
+        // Strip custom hat visuals from any unequipped helmets in main inventory (0..35) and off-hand
         for (int i = 0; i < 36; i++) {
             ItemStack invItem = player.getInventory().getItem(i);
             if (isCustomHatItem(invItem)) {
                 stripCustomHatFromItem(invItem);
                 player.getInventory().setItem(i, invItem);
             }
+        }
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        if (isCustomHatItem(offHand)) {
+            stripCustomHatFromItem(offHand);
+            player.getInventory().setItemInOffHand(offHand);
         }
 
         applySavedTrimToSlot(player, EquipmentSlot.HEAD);
@@ -522,7 +532,7 @@ public class TrimGuiManager implements Listener {
             if (slotIndex >= 36) break;
             ItemStack nexoStack = plugin.getNexoItem(hatId);
             if (nexoStack == null) {
-                continue; // Skip invalid hats in player view (visible in Admin GUI for removal)
+                continue;
             }
 
             boolean selected = hatId.equalsIgnoreCase(currentHat);
@@ -551,10 +561,8 @@ public class TrimGuiManager implements Listener {
             inv.setItem(slotIndex++, icon);
         }
 
-        // Slot 45: Back to Decoration Hub
         inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
-        // Slot 49: Reset & Clear Hat Button
         ItemStack clearBtn = createCleanIconStack(Material.BARRIER);
         ItemMeta clearMeta = clearBtn.getItemMeta();
         if (clearMeta != null) {
@@ -569,7 +577,6 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(49, clearBtn);
 
-        // Slot 53: Admin Hat Manager Button (Only visible to Admins)
         if (player.hasPermission(AntiArmorTrim.ADMIN_PERM)) {
             ItemStack adminBtn = createCleanIconStack(Material.COMMAND_BLOCK);
             ItemMeta adminMeta = adminBtn.getItemMeta();
@@ -626,7 +633,6 @@ public class TrimGuiManager implements Listener {
                     icon.setItemMeta(meta);
                 }
             } else {
-                // Broken / Invalid Nexo Item ID -> Display Barrier so Admin can easily delete it
                 icon = createCleanIconStack(Material.BARRIER);
                 ItemMeta meta = icon.getItemMeta();
                 if (meta != null) {
@@ -644,10 +650,8 @@ public class TrimGuiManager implements Listener {
             inv.setItem(slotIndex++, icon);
         }
 
-        // Slot 45: Back to Player Hat Studio
         inv.setItem(45, createBackButton("<#f9e2af><bold>Back to Hat Studio</bold>"));
 
-        // Slot 49: Add New Hat Button
         ItemStack addBtn = createCleanIconStack(Material.ANVIL);
         ItemMeta addMeta = addBtn.getItemMeta();
         if (addMeta != null) {
@@ -681,7 +685,6 @@ public class TrimGuiManager implements Listener {
             inv.setItem(i, border);
         }
 
-        // Slot 11: Standard Vanilla Minecraft Color & Format Guide
         ItemStack guideItem = createCleanIconStack(Material.KNOWLEDGE_BOOK);
         ItemMeta guideMeta = guideItem.getItemMeta();
         if (guideMeta != null) {
@@ -708,7 +711,6 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(11, guideItem);
 
-        // Slot 13: Held Item Live Preview
         ItemStack handItem = player.getInventory().getItemInMainHand();
         if (handItem == null || handItem.getType().isAir()) {
             ItemStack emptyIcon = createCleanIconStack(Material.BARRIER);
@@ -733,7 +735,6 @@ public class TrimGuiManager implements Listener {
             inv.setItem(13, preview);
         }
 
-        // Slot 15: Click to Rename Item Button
         ItemStack renameBtn = createCleanIconStack(Material.NAME_TAG);
         ItemMeta renameMeta = renameBtn.getItemMeta();
         if (renameMeta != null) {
@@ -749,7 +750,6 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(15, renameBtn);
 
-        // Slot 18: Back to Decoration Hub
         inv.setItem(18, createBackButton("<#f9e2af><bold>Back</bold>"));
 
         player.openInventory(inv);
@@ -887,17 +887,14 @@ public class TrimGuiManager implements Listener {
         String currentPattern = getSavedPatternKey(player, slot);
         String currentMaterial = getSavedMaterialKey(player, slot);
 
-        // 1. Patterns (Slots 0 -> 17)
         int pIndex = 0;
         for (PatternOption pOpt : PATTERNS.values()) {
             boolean selected = pOpt.key.equalsIgnoreCase(currentPattern);
             inv.setItem(pIndex++, createPatternIcon(player, pOpt, selected));
         }
 
-        // 2. Live Armor Preview Icon (Slot 22)
         inv.setItem(22, createMainSlotIcon(player, slot, previewMat));
 
-        // 3. Materials (Slots 29->33 and 38->42)
         int[] matSlots = {29, 30, 31, 32, 33, 38, 39, 40, 41, 42};
         int mIndex = 0;
         for (MaterialOption mOpt : MATERIALS.values()) {
@@ -906,10 +903,8 @@ public class TrimGuiManager implements Listener {
             inv.setItem(matSlots[mIndex++], createMaterialIcon(player, mOpt, selected));
         }
 
-        // 4. Navigation & Action Buttons
         inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
-        // Clear / Disable Auto-Trim Button (Slot 49)
         ItemStack clearBtn = createCleanIconStack(Material.BARRIER);
         ItemMeta clearMeta = clearBtn.getItemMeta();
         if (clearMeta != null) {
@@ -923,7 +918,6 @@ public class TrimGuiManager implements Listener {
         }
         inv.setItem(49, clearBtn);
 
-        // Apply to All 4 Pieces Button (Slot 53)
         ItemStack applyAllBtn = createCleanIconStack(Material.NETHER_STAR);
         ItemMeta allMeta = applyAllBtn.getItemMeta();
         if (allMeta != null) {
@@ -1133,7 +1127,7 @@ public class TrimGuiManager implements Listener {
                 setSavedHatId(player, hatId);
                 applySavedTrimToSlot(player, EquipmentSlot.HEAD);
 
-                player.playSound(player.getLocation(), Sound.ITEM_ARMOR_EQUIP_NETHERITE.value(), 1f, 1.2f);
+                player.playSound(player.getLocation(), Sound.ITEM_ARMOR_EQUIP_NETHERITE, 1f, 1.2f);
                 player.sendMessage(plugin.getMessage("hat-selected", Placeholder.unparsed("hat", hatId)));
                 openHatMenu(player);
             }
@@ -1153,7 +1147,6 @@ public class TrimGuiManager implements Listener {
                 return;
             }
 
-            // Add New Hat Button (Slot 49)
             if (rawSlot == 49) {
                 player.closeInventory();
                 pendingRenamePlayers.remove(player.getUniqueId());
@@ -1163,7 +1156,6 @@ public class TrimGuiManager implements Listener {
                 return;
             }
 
-            // Click existing or broken hat to delete it (Slots 0 -> 35)
             if (rawSlot < 36) {
                 ItemStack clicked = event.getCurrentItem();
                 if (clicked == null || clicked.getType().isAir()) return;
@@ -1277,7 +1269,6 @@ public class TrimGuiManager implements Listener {
         String slotName = getSlotEnglishName(armorSlot);
         String slotIcon = plugin.getItemSpriteTag(getPreviewMaterial(armorSlot));
 
-        // Select Pattern (Slots 0 -> 17)
         if (rawSlot < 18) {
             List<PatternOption> pList = new ArrayList<>(PATTERNS.values());
             if (rawSlot < pList.size()) {
@@ -1304,7 +1295,6 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // Select Material (Slots 29->33 and 38->42)
         int[] matSlots = {29, 30, 31, 32, 33, 38, 39, 40, 41, 42};
         for (int i = 0; i < matSlots.length; i++) {
             if (rawSlot == matSlots[i]) {
@@ -1334,7 +1324,6 @@ public class TrimGuiManager implements Listener {
             }
         }
 
-        // Clear / Reset Button (Slot 49)
         if (rawSlot == 49) {
             setSavedTrim(player, armorSlot, null, null);
             ItemStack worn = player.getInventory().getItem(armorSlot);
@@ -1351,7 +1340,6 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // Sync to All 4 Pieces Button (Slot 53)
         if (rawSlot == 53) {
             EquipmentSlot[] allSlots = {
                     EquipmentSlot.HEAD,
@@ -1406,7 +1394,6 @@ public class TrimGuiManager implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
 
-        // 1. Handle Admin Add Hat ID Input
         if (pendingAddHatPlayers.remove(uuid)) {
             event.setCancelled(true);
             String rawId = event.signedMessage().message().trim();
@@ -1444,7 +1431,6 @@ public class TrimGuiManager implements Listener {
             return;
         }
 
-        // 2. Handle Item Rename Input
         if (pendingRenamePlayers.remove(uuid)) {
             event.setCancelled(true);
             String rawInput = event.signedMessage().message().trim();
