@@ -6,7 +6,7 @@
 
     <groupId>com.server</groupId>
     <artifactId>AntiArmorTrim</artifactId>
-    <version>2.1.0</version>
+    <version>2.5.0</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -23,15 +23,12 @@
     </repositories>
 
     <dependencies>
-        <!-- Paper API -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>1.21.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-
-        <!-- LuckPerms API (Bắt buộc để import net.luckperms.api.*) -->
         <dependency>
             <groupId>net.luckperms</groupId>
             <artifactId>api</artifactId>
