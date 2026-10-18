@@ -17,9 +17,12 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -37,12 +40,16 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
             .build();
 
     public static final String BYPASS_PERM = "armortrim.bypass";
+    public static final String HAT_PERM = "armortrim.hat";
     public static final String RENAME_PERM = "armortrim.rename";
     public static final String ADMIN_PERM = "armortrim.admin";
 
-    // Bắt buộc phải có & hoặc § đứng trước # để không làm hỏng thẻ <#hex> của MiniMessage
     private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)[&§]#([A-Fa-f0-9]{6})");
     private static final Pattern LEGACY_CODE_PATTERN = Pattern.compile("(?i)[&§]([0-9a-fk-or])");
+
+    // Cached Reflection for Nexo API (com.nexomc.nexo.api.NexoItems)
+    private Method nexoItemFromIdMethod;
+    private Method nexoBuilderBuildMethod;
 
     @Override
     public void onEnable() {
@@ -56,9 +63,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         registerCmd("antitrim");
         registerCmd("decor");
         registerCmd("trim");
+        registerCmd("hat");
         registerCmd("rename");
 
-        getLogger().info("AntiArmorTrim v2.3.2 enabled!");
+        getLogger().info("AntiArmorTrim v2.4.0 (Catppuccin + Nexo Hats) enabled!");
     }
 
     private void registerCmd(String name) {
@@ -82,14 +90,41 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return guiManager;
     }
 
+    /**
+     * Dynamically fetches a custom ItemStack from Nexo by its item ID.
+     * Returns null if Nexo is not installed or the item ID does not exist in Nexo.
+     */
+    @Nullable
+    public ItemStack getNexoItem(String itemId) {
+        if (itemId == null || itemId.isBlank()) return null;
+        if (!Bukkit.getPluginManager().isPluginEnabled("Nexo")) return null;
+
+        try {
+            if (nexoItemFromIdMethod == null) {
+                Class<?> nexoItemsClass = Class.forName("com.nexomc.nexo.api.NexoItems");
+                nexoItemFromIdMethod = nexoItemsClass.getMethod("itemFromId", String.class);
+            }
+            Object itemBuilder = nexoItemFromIdMethod.invoke(null, itemId.trim());
+            if (itemBuilder == null) {
+                return null;
+            }
+            if (nexoBuilderBuildMethod == null) {
+                nexoBuilderBuildMethod = itemBuilder.getClass().getMethod("build");
+            }
+            Object built = nexoBuilderBuildMethod.invoke(itemBuilder);
+            if (built instanceof ItemStack stack) {
+                return stack.clone();
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
     public String getItemSpriteTag(Material material) {
         String key = material.getKey().getKey();
         return "<white><sprite:items:item/" + key + "></white>";
     }
 
-    /**
-     * Parses pure MiniMessage without replacing & codes (used for Format Guide so &c, &k stay visible).
-     */
     public Component parseLiteral(String input) {
         if (input == null || input.isEmpty()) {
             return Component.empty();
@@ -98,9 +133,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
-    /**
-     * Parses item rename input using 100% standard Vanilla Minecraft colors (&0-&f, &k-&r).
-     */
     public Component parseMinecraftFormat(String input) {
         if (input == null || input.isEmpty()) {
             return Component.empty();
@@ -133,10 +165,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     public Component getMessageWithPerm(String key, String permissionNode, TagResolver... resolvers) {
         String prefixRaw = getConfig().getString("messages.prefix", "");
-        String defaultMsg = key.equals("trim-cleared-all")
-                ? "<#cdd6f4>Cleared active trims across all <#cba6f7>4 armor pieces<#cdd6f4>."
-                : "<#f38ba8>Missing message key: " + key;
-        String msgRaw = getConfig().getString("messages." + key, defaultMsg);
+        String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
         return parseWithPerm(prefixRaw + msgRaw, permissionNode, resolvers);
     }
 
@@ -184,10 +213,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return legacyToMiniMessage(fallback);
     }
 
-    /**
-     * Converts &#RRGGBB and standard &0-&f codes into standard Minecraft MiniMessage tags
-     * without touching existing <#RRGGBB> tags.
-     */
     public String legacyToMiniMessage(String text) {
         if (text == null || text.isEmpty()) return "";
 
@@ -255,6 +280,23 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
             return true;
         }
 
+        if (cmdName.equals("hat")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage(getMessage("only-players"));
+                return true;
+            }
+            if (args.length > 0 && args[0].equalsIgnoreCase("admin")) {
+                if (!player.hasPermission(ADMIN_PERM)) {
+                    player.sendMessage(getMessage("no-permission"));
+                    return true;
+                }
+                guiManager.openHatAdminMenu(player);
+                return true;
+            }
+            guiManager.openHatMenu(player);
+            return true;
+        }
+
         if (cmdName.equals("rename")) {
             if (!(sender instanceof Player player)) {
                 sender.sendMessage(getMessage("only-players"));
@@ -269,14 +311,24 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
             return true;
         }
 
-        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) {
-            if (!sender.hasPermission(ADMIN_PERM)) {
-                sender.sendMessage(getMessage("no-permission"));
+        if (args.length > 0) {
+            if (args[0].equalsIgnoreCase("reload")) {
+                if (!sender.hasPermission(ADMIN_PERM)) {
+                    sender.sendMessage(getMessage("no-permission"));
+                    return true;
+                }
+                reloadConfig();
+                sender.sendMessage(getMessage("reload-success"));
                 return true;
             }
-            reloadConfig();
-            sender.sendMessage(getMessage("reload-success"));
-            return true;
+            if (args[0].equalsIgnoreCase("hats") && sender instanceof Player player) {
+                if (!player.hasPermission(ADMIN_PERM)) {
+                    player.sendMessage(getMessage("no-permission"));
+                    return true;
+                }
+                guiManager.openHatAdminMenu(player);
+                return true;
+            }
         }
 
         sender.sendMessage(getMessage("usage", Placeholder.unparsed("label", label)));
@@ -287,7 +339,12 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("antitrim") && args.length == 1) {
             if (sender.hasPermission(ADMIN_PERM)) {
-                return Collections.singletonList("reload");
+                return List.of("reload", "hats");
+            }
+        }
+        if (command.getName().equalsIgnoreCase("hat") && args.length == 1) {
+            if (sender.hasPermission(ADMIN_PERM)) {
+                return Collections.singletonList("admin");
             }
         }
         return Collections.emptyList();
