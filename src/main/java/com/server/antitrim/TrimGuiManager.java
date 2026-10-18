@@ -4,6 +4,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
@@ -283,9 +284,13 @@ public class TrimGuiManager implements Listener {
     }
 
     /**
-     * Replaces a Diamond/Netherite helmet with a genuine clone of the Nexo Hat ItemStack
-     * so 100% of Nexo's 3D models/textures/tints render accurately, while embedding the original
-     * helmet's bytes, enchantments, durability, and armor attributes.
+     * Replaces a Diamond/Netherite helmet with a genuine clone of the Nexo Hat ItemStack.
+     * Tooltip Order:
+     * 1. Base Armor Info (with Sprite)
+     * 2. Hat Lore
+     * 3. Enchantments
+     * 4. Attributes (When on Head)
+     * (Hides "Dyed" text via ItemFlag.HIDE_DYE)
      */
     @Nullable
     public ItemStack createCosmeticHatFromHelmet(ItemStack baseHelmet, String hatId) {
@@ -315,8 +320,10 @@ public class TrimGuiManager implements Listener {
         // 1. Set Hat Display Name
         hatMeta.displayName(getHatDisplayName(hatId, nexoHat));
 
-        // 2. Build Lore: Hat Custom Lore + Base Armor Info (with Sprite)
-        List<Component> combinedLore = new ArrayList<>(getHatCustomLore(hatId, nexoHat));
+        // 2. Build Clean Lore in exact order: Base Item -> Hat Lore -> Enchantments
+        List<Component> combinedLore = new ArrayList<>();
+
+        // (A) Base Item Line first
         String baseSprite = plugin.getItemSpriteTag(cleanBase.getType());
         Component baseNameComp = cleanBaseMeta.hasDisplayName() && cleanBaseMeta.displayName() != null
                 ? cleanBaseMeta.displayName()
@@ -326,23 +333,50 @@ public class TrimGuiManager implements Listener {
 
         List<String> baseLoreFormat = plugin.getConfig().getStringList("gui.hat-base-armor-lore");
         if (baseLoreFormat.isEmpty()) {
-            baseLoreFormat = List.of("", "<base_icon> <#a6adc8>Base Armor: <base_name>");
+            baseLoreFormat = List.of("<base_icon> <#a6adc8>Base Armor: <base_name>");
         }
         for (String line : baseLoreFormat) {
+            // Skip leading empty lines from older config so Base Armor sits cleanly at the top
+            if (combinedLore.isEmpty() && line.isBlank()) continue;
             combinedLore.add(plugin.parse(line,
                     Placeholder.parsed("base_icon", baseSprite),
                     Placeholder.component("base_name", baseNameComp)));
         }
+
+        // (B) Hat Custom Lore second (and any custom lore from the base helmet)
+        List<Component> hatLore = getHatCustomLore(hatId, nexoHat);
+        if (!hatLore.isEmpty()) {
+            combinedLore.addAll(hatLore);
+        }
+        if (cleanBaseMeta.hasLore() && cleanBaseMeta.lore() != null) {
+            combinedLore.addAll(cleanBaseMeta.lore());
+        }
+
+        // (C) Enchantments third (rendered cleanly below lore, while native top enchants are hidden)
+        Map<Enchantment, Integer> baseEnchants = cleanBaseMeta.getEnchants();
+        if (!baseEnchants.isEmpty()) {
+            for (Map.Entry<Enchantment, Integer> entry : baseEnchants.entrySet()) {
+                Component enchLine = entry.getKey().displayName(entry.getValue())
+                        .decoration(TextDecoration.ITALIC, false);
+                combinedLore.add(enchLine);
+            }
+        }
+
         hatMeta.lore(combinedLore);
 
-        // 3. Copy all Enchantments from the base helmet & ensure they are visible
+        // 3. Copy functional Enchantments & hide native top enchant list + hide "Dyed" tooltip
         for (Enchantment ench : new ArrayList<>(hatMeta.getEnchants().keySet())) {
             hatMeta.removeEnchant(ench);
         }
-        for (Map.Entry<Enchantment, Integer> entry : cleanBaseMeta.getEnchants().entrySet()) {
+        for (Map.Entry<Enchantment, Integer> entry : baseEnchants.entrySet()) {
             hatMeta.addEnchant(entry.getKey(), entry.getValue(), true);
         }
-        hatMeta.removeItemFlags(ItemFlag.HIDE_ENCHANTS, ItemFlag.HIDE_ATTRIBUTES);
+        hatMeta.addItemFlags(
+                ItemFlag.HIDE_DYE,
+                ItemFlag.HIDE_ENCHANTS,
+                ItemFlag.HIDE_STORED_ENCHANTS
+        );
+        hatMeta.removeItemFlags(ItemFlag.HIDE_ATTRIBUTES);
 
         // 4. Copy Armor Attributes (Armor, Armor Toughness, Knockback Resistance) from the base helmet
         Multimap<Attribute, AttributeModifier> modifiers = cleanBaseMeta.hasAttributeModifiers()
@@ -618,9 +652,6 @@ public class TrimGuiManager implements Listener {
                 }
 
                 List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
-                if (!lore.isEmpty()) {
-                    lore.add(Component.empty());
-                }
                 appendSelectionOrLockedLore(player, lore, AntiArmorTrim.HAT_PERM, selected);
                 meta.lore(lore);
                 meta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
