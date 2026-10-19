@@ -2,22 +2,31 @@ package com.server.antitrim;
 
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import org.bukkit.Bukkit;
+import org.bukkit.GameRule;
 import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.weather.ThunderChangeEvent;
+import org.bukkit.event.weather.WeatherChangeEvent;
+import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
@@ -33,12 +42,43 @@ public class TrimListener implements Listener {
     public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
         this.plugin = plugin;
         this.guiManager = guiManager;
+
+        for (World world : Bukkit.getWorlds()) {
+            lockAlwaysDaytime(world);
+        }
+    }
+
+    public void lockAlwaysDaytime(World world) {
+        if (world == null) return;
+        world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
+        world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
+        world.setTime(6000L);
+        world.setStorm(false);
+        world.setThundering(false);
+        world.setClearWeatherDuration(Integer.MAX_VALUE);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onWorldLoad(WorldLoadEvent event) {
+        lockAlwaysDaytime(event.getWorld());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onWeatherChange(WeatherChangeEvent event) {
+        if (event.toWeatherState()) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onThunderChange(ThunderChangeEvent event) {
+        if (event.toThunderState()) {
+            event.setCancelled(true);
+        }
     }
 
     private boolean hasArmorTrim(ItemStack item) {
-        if (item == null || item.getType().isAir()) {
-            return false;
-        }
+        if (item == null || item.getType().isAir()) return false;
         ItemMeta meta = item.getItemMeta();
         if (meta instanceof ArmorMeta armorMeta) {
             return armorMeta.hasTrim();
@@ -47,6 +87,11 @@ public class TrimListener implements Listener {
     }
 
     private void scanAndClean(Player player) {
+        ItemStack cursor = player.getItemOnCursor();
+        if (guiManager.isCustomHatItem(cursor)) {
+            player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
+        }
+
         guiManager.applyAllSavedTrims(player);
 
         if (!guiManager.canUseHat(player)) {
@@ -56,9 +101,7 @@ public class TrimListener implements Listener {
             }
         }
 
-        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
-            return;
-        }
+        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
         boolean removed = false;
         ItemStack[] contents = player.getInventory().getContents();
@@ -93,8 +136,7 @@ public class TrimListener implements Listener {
         });
     }
 
-    // Restore the original Diamond/Netherite helmet in death drops so custom hats never drop on death
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onDeath(PlayerDeathEvent event) {
         List<ItemStack> drops = event.getDrops();
         for (int i = 0; i < drops.size(); i++) {
@@ -104,13 +146,44 @@ public class TrimListener implements Listener {
             }
         }
 
-        if (event.getKeepInventory()) {
-            Player player = event.getPlayer();
-            ItemStack helmet = player.getInventory().getHelmet();
-            if (guiManager.isCustomHatItem(helmet)) {
-                player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+        Player player = event.getPlayer();
+        ItemStack helmet = player.getInventory().getHelmet();
+        if (guiManager.isCustomHatItem(helmet)) {
+            player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            guiManager.forceRefreshEquippedHat(player);
+            scanAndClean(player);
+        }, 2L);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent event) {
+        if (event.getFrom().getWorld() != null && event.getTo() != null && event.getTo().getWorld() != null) {
+            if (!event.getFrom().getWorld().equals(event.getTo().getWorld())) {
+                Player player = event.getPlayer();
+                ItemStack helmet = player.getInventory().getHelmet();
+                if (guiManager.isCustomHatItem(helmet)) {
+                    player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+                }
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onChangedWorld(PlayerChangedWorldEvent event) {
+        Player player = event.getPlayer();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            guiManager.forceRefreshEquippedHat(player);
+            scanAndClean(player);
+        }, 2L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -133,10 +206,15 @@ public class TrimListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onJoin(PlayerJoinEvent event) {
-        scanAndClean(event.getPlayer());
+        Player player = event.getPlayer();
+        scanAndClean(player);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            guiManager.forceRefreshEquippedHat(player);
+            scanAndClean(player);
+        }, 2L);
     }
 
-    // Restore original helmet on quit so offline player data always holds the real Diamond/Netherite helmet
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuitRestore(PlayerQuitEvent event) {
         Player player = event.getPlayer();
@@ -170,7 +248,6 @@ public class TrimListener implements Listener {
         if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
-        // Immediately restore original helmet when clicked so players pick up/move the real helmet
         boolean restoredHat = false;
         if (guiManager.isCustomHatItem(event.getCurrentItem())) {
             event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
@@ -180,6 +257,24 @@ public class TrimListener implements Listener {
             event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
             restoredHat = true;
         }
+
+        if (event.getClick() == ClickType.NUMBER_KEY) {
+            int hotbarBtn = event.getHotbarButton();
+            if (hotbarBtn >= 0) {
+                ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
+                if (guiManager.isCustomHatItem(hotbarItem)) {
+                    player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
+                    restoredHat = true;
+                }
+            }
+        } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
+            ItemStack offhand = player.getInventory().getItemInOffHand();
+            if (guiManager.isCustomHatItem(offhand)) {
+                player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
+                restoredHat = true;
+            }
+        }
+
         if (restoredHat) {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (player.isOnline()) {
@@ -202,6 +297,18 @@ public class TrimListener implements Listener {
             event.getView().setCursor(null);
             event.setCancelled(true);
             triggered = true;
+        }
+
+        if (event.getClick() == ClickType.NUMBER_KEY) {
+            int hotbarBtn = event.getHotbarButton();
+            if (hotbarBtn >= 0) {
+                ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
+                if (hasArmorTrim(hotbarItem)) {
+                    player.getInventory().setItem(hotbarBtn, null);
+                    event.setCancelled(true);
+                    triggered = true;
+                }
+            }
         }
 
         if (triggered) {
