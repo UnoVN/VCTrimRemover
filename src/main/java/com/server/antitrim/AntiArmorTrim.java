@@ -12,6 +12,7 @@ import net.luckperms.api.model.group.Group;
 import net.luckperms.api.node.Node;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -34,6 +35,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     private static AntiArmorTrim instance;
     private TrimGuiManager guiManager;
+    private TrimListener trimListener;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final LegacyComponentSerializer minecraftLegacySerializer = LegacyComponentSerializer.builder()
             .character('&')
@@ -56,7 +58,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         saveDefaultConfig();
 
         this.guiManager = new TrimGuiManager(this);
-        getServer().getPluginManager().registerEvents(new TrimListener(this, guiManager), this);
+        this.trimListener = new TrimListener(this, guiManager);
+
+        getServer().getPluginManager().registerEvents(trimListener, this);
         getServer().getPluginManager().registerEvents(guiManager, this);
 
         registerCmd("antitrim");
@@ -78,7 +82,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     @Override
     public void onDisable() {
-        // Restore all online players' helmets before shutdown so no cosmetic state is left in inventory
         if (guiManager != null) {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 ItemStack helmet = player.getInventory().getHelmet();
@@ -109,9 +112,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                 nexoItemFromIdMethod = nexoItemsClass.getMethod("itemFromId", String.class);
             }
             Object itemBuilder = nexoItemFromIdMethod.invoke(null, itemId.trim());
-            if (itemBuilder == null) {
-                return null;
-            }
+            if (itemBuilder == null) return null;
+
             if (nexoBuilderBuildMethod == null) {
                 nexoBuilderBuildMethod = itemBuilder.getClass().getMethod("build");
             }
@@ -130,17 +132,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     public Component parseLiteral(String input) {
-        if (input == null || input.isEmpty()) {
-            return Component.empty();
-        }
+        if (input == null || input.isEmpty()) return Component.empty();
         return miniMessage.deserialize(input)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
     }
 
     public Component parseMinecraftFormat(String input) {
-        if (input == null || input.isEmpty()) {
-            return Component.empty();
-        }
+        if (input == null || input.isEmpty()) return Component.empty();
         String normalized = input.replace('§', '&');
         return minecraftLegacySerializer.deserialize(normalized)
                 .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
@@ -151,9 +149,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
 
     public Component parseWithPerm(String input, String permissionNode, TagResolver... resolvers) {
-        if (input == null || input.isEmpty()) {
-            return Component.empty();
-        }
+        if (input == null || input.isEmpty()) return Component.empty();
         String converted = legacyToMiniMessage(input);
         TagResolver combined = TagResolver.builder()
                 .resolver(Placeholder.parsed("rank", getRequiredRankRaw(permissionNode)))
@@ -309,8 +305,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
             if (args.length == 0) {
                 guiManager.openRenameMenu(player);
             } else {
-                String rawName = String.join(" ", args);
-                guiManager.applyItemRename(player, rawName);
+                guiManager.applyItemRename(player, String.join(" ", args));
             }
             return true;
         }
@@ -322,7 +317,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
                     return true;
                 }
                 reloadConfig();
+                if (trimListener != null) {
+                    for (World world : Bukkit.getWorlds()) {
+                        trimListener.lockAlwaysDaytime(world);
+                    }
+                }
                 for (Player online : Bukkit.getOnlinePlayers()) {
+                    guiManager.forceRefreshEquippedHat(online);
                     guiManager.applyAllSavedTrims(online);
                 }
                 sender.sendMessage(getMessage("reload-success"));
@@ -344,15 +345,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        if (command.getName().equalsIgnoreCase("antitrim") && args.length == 1) {
-            if (sender.hasPermission(ADMIN_PERM)) {
-                return List.of("reload", "hats");
-            }
+        if (command.getName().equalsIgnoreCase("antitrim") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
+            return List.of("reload", "hats");
         }
-        if (command.getName().equalsIgnoreCase("hat") && args.length == 1) {
-            if (sender.hasPermission(ADMIN_PERM)) {
-                return Collections.singletonList("admin");
-            }
+        if (command.getName().equalsIgnoreCase("hat") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
+            return Collections.singletonList("admin");
         }
         return Collections.emptyList();
     }
