@@ -2,7 +2,6 @@ package com.server.antitrim;
 
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import org.bukkit.Bukkit;
-import org.bukkit.GameRule;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -26,41 +25,98 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.weather.ThunderChangeEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
+import org.bukkit.event.world.TimeSkipEvent;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
 
 public class TrimListener implements Listener {
 
     private final AntiArmorTrim plugin;
     private final TrimGuiManager guiManager;
+    private Method setGameRuleMethod;
 
     public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
         this.plugin = plugin;
         this.guiManager = guiManager;
 
+        try {
+            for (Method m : World.class.getMethods()) {
+                if (m.getName().equals("setGameRule") && m.getParameterCount() == 2) {
+                    this.setGameRuleMethod = m;
+                    break;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+
         for (World world : Bukkit.getWorlds()) {
             lockAlwaysDaytime(world);
         }
+
+        // Task kiem tra dinh ky moi 60 ticks (3 giay) dam bao World luon o moc 6000L (Giua trua)
+        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            for (World world : Bukkit.getWorlds()) {
+                if (world.getEnvironment() == World.Environment.NORMAL) {
+                    if (world.getTime() != 6000L) {
+                        world.setTime(6000L);
+                    }
+                    if (world.hasStorm()) {
+                        world.setStorm(false);
+                    }
+                    if (world.isThundering()) {
+                        world.setThundering(false);
+                    }
+                }
+            }
+        }, 60L, 60L);
     }
 
     public void lockAlwaysDaytime(World world) {
         if (world == null) return;
-        world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
-        world.setGameRule(GameRule.DO_WEATHER_CYCLE, false);
+
+        // Tuong thich dong thoi ca 1.21.11 (ADVANCE_TIME / ADVANCE_WEATHER) va 1.21.1 (DO_DAYLIGHT_CYCLE / DO_WEATHER_CYCLE)
+        setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_TIME");
+        setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_WEATHER");
+        setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_TIME");
+        setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_WEATHER");
+        setRuleFalse(world, "org.bukkit.GameRule", "DO_DAYLIGHT_CYCLE");
+        setRuleFalse(world, "org.bukkit.GameRule", "DO_WEATHER_CYCLE");
+
         world.setTime(6000L);
         world.setStorm(false);
         world.setThundering(false);
         world.setClearWeatherDuration(Integer.MAX_VALUE);
     }
 
+    private void setRuleFalse(World world, String className, String fieldName) {
+        if (setGameRuleMethod == null) return;
+        try {
+            Class<?> clazz = Class.forName(className);
+            Field field = clazz.getField(fieldName);
+            Object ruleObj = field.get(null);
+            if (ruleObj != null) {
+                setGameRuleMethod.invoke(world, ruleObj, Boolean.FALSE);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onWorldLoad(WorldLoadEvent event) {
         lockAlwaysDaytime(event.getWorld());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onTimeSkip(TimeSkipEvent event) {
+        event.setCancelled(true);
+        event.getWorld().setTime(6000L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -319,9 +375,15 @@ public class TrimListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onInteract(PlayerInteractEvent event) {
         Player player = event.getPlayer();
+        ItemStack item = event.getItem();
+
+        if (guiManager.isCustomHatItem(item) && event.getHand() != null) {
+            item = guiManager.restoreOriginalHelmet(item);
+            player.getInventory().setItem(event.getHand(), item);
+        }
+
         if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
-        ItemStack item = event.getItem();
         if (hasArmorTrim(item)) {
             event.setCancelled(true);
             if (event.getHand() != null) {
