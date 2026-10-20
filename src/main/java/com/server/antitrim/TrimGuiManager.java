@@ -659,6 +659,11 @@ public class TrimGuiManager implements Listener {
     player.openInventory(inv);
   }
 
+  public void deleteHatByCommand(Player player, String hatId) {
+    deleteHatFromConfig(player, hatId);
+    openHatAdminMenu(player);
+  }
+
   private void deleteHatFromConfig(Player player, String hatId) {
     List<String> hats = new ArrayList<>(plugin.getConfig().getStringList("hats.items"));
     if (hats.removeIf(h -> h.equalsIgnoreCase(hatId))) {
