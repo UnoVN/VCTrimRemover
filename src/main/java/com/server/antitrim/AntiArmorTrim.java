@@ -109,10 +109,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public void onDisable() {
     if (guiManager != null) {
       for (Player player : Bukkit.getOnlinePlayers()) {
-        ItemStack helmet = player.getInventory().getHelmet();
-        if (guiManager.isCustomHatItem(helmet)) {
-          player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
-        }
+        guiManager.restoreAllCustomHatsInInventory(player);
       }
     }
     getLogger().info("AntiArmorTrim disabled.");
