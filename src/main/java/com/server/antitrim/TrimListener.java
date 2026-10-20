@@ -140,7 +140,7 @@ public class TrimListener implements Listener {
 
     guiManager.applyAllSavedTrims(player);
 
-    if (!guiManager.canUseHat(player)) {
+    if (guiManager.getEffectiveHatId(player) == null) {
       ItemStack helmet = player.getInventory().getHelmet();
       if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
     }
