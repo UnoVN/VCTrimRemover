@@ -170,8 +170,9 @@ public class TrimGuiManager implements Listener {
 
   public TrimGuiManager(AntiArmorTrim plugin) { this.plugin = plugin; }
 
-  public boolean canUseRename(Player p) { return p.hasPermission(AntiArmorTrim.RENAME_PERM) || p.hasPermission(AntiArmorTrim.BYPASS_PERM); }
-  public boolean canUseHat(Player p) { return p.hasPermission(AntiArmorTrim.HAT_PERM) || p.hasPermission(AntiArmorTrim.BYPASS_PERM); }
+  public boolean canUseBypass(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.BYPASS_PERM) || plugin.hasAdminPerm(p); }
+  public boolean canUseRename(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.RENAME_PERM) || canUseBypass(p); }
+  public boolean canUseHat(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.HAT_PERM) || canUseBypass(p); }
 
   public String toMiniFont(String text) {
     if (text == null || text.isEmpty()) return "";
@@ -456,7 +457,7 @@ public class TrimGuiManager implements Listener {
       }
     }
 
-    if (!player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+    if (!canUseBypass(player)) return;
 
     ItemStack item = player.getInventory().getItem(slot);
     if (item == null || item.getType().isAir() || !(item.getItemMeta() instanceof ArmorMeta armorMeta)) return;
@@ -563,7 +564,7 @@ public class TrimGuiManager implements Listener {
     appendLockedLoreIfNeeded(player, clearLore, AntiArmorTrim.HAT_PERM);
     inv.setItem(49, createStyledButton(Material.BARRIER, "<#f38ba8><bold>Reset & Unequip Hat</bold>", clearLore));
 
-    if (player.hasPermission(AntiArmorTrim.ADMIN_PERM)) {
+    if (plugin.hasAdminPerm(player)) {
       inv.setItem(53, createStyledButton(Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin Hat Manager</bold>", List.of(
           plugin.parse("<#a6adc8>Manage Nexo hats, edit display"), plugin.parse("<#a6adc8>names, lore, or remove broken IDs."))));
     }
@@ -902,7 +903,8 @@ public class TrimGuiManager implements Listener {
     boolean hasPerm = switch (requiredPerm) {
       case AntiArmorTrim.RENAME_PERM -> canUseRename(player);
       case AntiArmorTrim.HAT_PERM -> canUseHat(player);
-      default -> player.hasPermission(requiredPerm);
+      case AntiArmorTrim.BYPASS_PERM -> canUseBypass(player);
+      default -> player.isOp() || player.hasPermission(requiredPerm);
     };
     if (hasPerm) {
       String statusRaw = selected
@@ -918,7 +920,8 @@ public class TrimGuiManager implements Listener {
     boolean hasPerm = switch (requiredPerm) {
       case AntiArmorTrim.RENAME_PERM -> canUseRename(player);
       case AntiArmorTrim.HAT_PERM -> canUseHat(player);
-      default -> player.hasPermission(requiredPerm);
+      case AntiArmorTrim.BYPASS_PERM -> canUseBypass(player);
+      default -> player.isOp() || player.hasPermission(requiredPerm);
     };
     if (!hasPerm) {
       for (String line : plugin.getConfig().getStringList("gui.no-permission-lore")) lore.add(plugin.parseWithPerm(line, requiredPerm));
@@ -983,7 +986,7 @@ public class TrimGuiManager implements Listener {
 
     if (menuType == MenuType.HAT_STUDIO) {
       if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openDecorHub(player); return; }
-      if (rawSlot == 53 && player.hasPermission(AntiArmorTrim.ADMIN_PERM)) {
+      if (rawSlot == 53 && plugin.hasAdminPerm(player)) {
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
         openHatAdminMenu(player);
         return;
@@ -1024,7 +1027,7 @@ public class TrimGuiManager implements Listener {
     }
 
     if (menuType == MenuType.HAT_ADMIN) {
-      if (!player.hasPermission(AntiArmorTrim.ADMIN_PERM)) { player.closeInventory(); return; }
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
       if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatMenu(player); return; }
       if (rawSlot == 49) {
         player.closeInventory();
@@ -1052,7 +1055,7 @@ public class TrimGuiManager implements Listener {
     }
 
     if (menuType == MenuType.HAT_EDITOR) {
-      if (!player.hasPermission(AntiArmorTrim.ADMIN_PERM)) { player.closeInventory(); return; }
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
       String hatId = holder.getEditingHatId();
       if (hatId == null) return;
 
@@ -1164,7 +1167,7 @@ public class TrimGuiManager implements Listener {
         || (rawSlot >= 38 && rawSlot <= 42) || rawSlot == 49 || rawSlot == 53;
     if (!isInteractiveSlot) return;
 
-    if (!player.hasPermission(AntiArmorTrim.BYPASS_PERM)) {
+    if (!canUseBypass(player)) {
       player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
       player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.BYPASS_PERM));
       return;
