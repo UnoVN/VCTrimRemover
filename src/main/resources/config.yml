@@ -60,4 +60,4 @@ messages:
   reload-success: "<#a6e3a1>Configuration reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats"
