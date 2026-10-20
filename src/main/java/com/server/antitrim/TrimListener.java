@@ -16,6 +16,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.PrepareSmithingEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -33,6 +34,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.List;
 
 public class TrimListener implements Listener {
@@ -65,6 +67,20 @@ public class TrimListener implements Listener {
         }
       }
     }, 60L, 60L);
+  }
+
+  // Uu tien lenh /hat va /hat admin truoc Essentials
+  @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+  public void onCommandPreprocess(PlayerCommandPreprocessEvent event) {
+    String msg = event.getMessage().trim();
+    String lower = msg.toLowerCase();
+    if (lower.equals("/hat") || lower.startsWith("/hat ") || lower.equals("/hats") || lower.startsWith("/hats ")
+        || lower.equals("/customhat") || lower.startsWith("/customhat ")) {
+      event.setCancelled(true);
+      String[] parts = msg.split("\\s+");
+      String[] args = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
+      plugin.handleHatCommand(event.getPlayer(), args);
+    }
   }
 
   public void lockAlwaysDaytime(World world) {
