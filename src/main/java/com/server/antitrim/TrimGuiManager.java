@@ -21,6 +21,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -195,6 +196,31 @@ public class TrimGuiManager implements Listener {
       return defHat;
     }
     return null;
+  }
+
+  // Kiem tra neu nguoi choi dang mo GUI ngoai (nhu PerPlayerKit /kit) thi giu nguyen mu Kim Cuong / Netherite that
+  public boolean isExternalGuiOpen(Player player) {
+    Inventory top = player.getOpenInventory().getTopInventory();
+    if (top.getHolder() instanceof TrimMenuHolder) return false;
+    InventoryType type = top.getType();
+    return type != InventoryType.CRAFTING && type != InventoryType.CREATIVE;
+  }
+
+  // Khoi phuc ngay lap tuc toan bo Nexo Hat trong kho do / tren dau ve mu that (dung truoc khi PerPlayerKit doc kho do)
+  public void restoreAllCustomHatsInInventory(Player player) {
+    ItemStack cursor = player.getItemOnCursor();
+    if (isCustomHatItem(cursor)) player.setItemOnCursor(restoreOriginalHelmet(cursor));
+
+    ItemStack helmet = player.getInventory().getHelmet();
+    if (isCustomHatItem(helmet)) player.getInventory().setHelmet(restoreOriginalHelmet(helmet));
+
+    ItemStack offHand = player.getInventory().getItemInOffHand();
+    if (isCustomHatItem(offHand)) player.getInventory().setItemInOffHand(restoreOriginalHelmet(offHand));
+
+    for (int i = 0; i < 36; i++) {
+      ItemStack item = player.getInventory().getItem(i);
+      if (isCustomHatItem(item)) player.getInventory().setItem(i, restoreOriginalHelmet(item));
+    }
   }
 
   public void setForceDefaultHat(Player admin, @Nullable String hatId, boolean enabled) {
@@ -485,24 +511,32 @@ public class TrimGuiManager implements Listener {
 
   public void applySavedTrimToSlot(Player player, EquipmentSlot slot) {
     if (slot == EquipmentSlot.HEAD) {
-      String effectiveHat = getEffectiveHatId(player);
       ItemStack headItem = player.getInventory().getHelmet();
 
-      if (effectiveHat != null) {
+      // Neu nguoi choi dang mo GUI ngoai (nhu PerPlayerKit /kit), luon giu nguyen mu Kim Cuong / Netherite that
+      if (isExternalGuiOpen(player)) {
         if (isCustomHatItem(headItem)) {
-          if (!isCosmeticHatValid(headItem, effectiveHat)) {
-            ItemStack restored = restoreOriginalHelmet(headItem);
-            ItemStack updatedHat = createCosmeticHatFromHelmet(restored, effectiveHat);
-            if (updatedHat != null) player.getInventory().setHelmet(updatedHat);
-          }
-          return;
-        } else if (isTargetHelmet(headItem)) {
-          ItemStack cosmeticHat = createCosmeticHatFromHelmet(headItem, effectiveHat);
-          if (cosmeticHat != null) player.getInventory().setHelmet(cosmeticHat);
-          return;
+          headItem = restoreOriginalHelmet(headItem);
+          player.getInventory().setHelmet(headItem);
         }
-      } else if (isCustomHatItem(headItem)) {
-        player.getInventory().setHelmet(restoreOriginalHelmet(headItem));
+      } else {
+        String effectiveHat = getEffectiveHatId(player);
+        if (effectiveHat != null) {
+          if (isCustomHatItem(headItem)) {
+            if (!isCosmeticHatValid(headItem, effectiveHat)) {
+              ItemStack restored = restoreOriginalHelmet(headItem);
+              ItemStack updatedHat = createCosmeticHatFromHelmet(restored, effectiveHat);
+              if (updatedHat != null) player.getInventory().setHelmet(updatedHat);
+            }
+            return;
+          } else if (isTargetHelmet(headItem)) {
+            ItemStack cosmeticHat = createCosmeticHatFromHelmet(headItem, effectiveHat);
+            if (cosmeticHat != null) player.getInventory().setHelmet(cosmeticHat);
+            return;
+          }
+        } else if (isCustomHatItem(headItem)) {
+          player.getInventory().setHelmet(restoreOriginalHelmet(headItem));
+        }
       }
     }
 
