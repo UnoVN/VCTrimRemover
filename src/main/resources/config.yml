@@ -1,8 +1,3 @@
-# +-------------------------------------------------------------------+ #
-# |                   AntiArmorTrim Configuration                     | #
-# |                  Theme: Catppuccin Mocha Palette                  | #
-# +-------------------------------------------------------------------+ #
-
 luckperms:
   auto-detect-rank: true
   fallback-rank: "<#f9e2af><bold>VIP</bold>"
@@ -15,23 +10,16 @@ gui:
   hat-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold>"
   hat-editor-title: "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>"
   rename-title: "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"
-
-  # Status shown when player HAS permission
   selected-status: "<#a6e3a1>● Selected"
   unselected-status: "<#6c7086>○ Unselected"
-
-  # Lore appended ONLY when the player DOES NOT HAVE permission
   no-permission-lore:
     - ""
     - "<#f38ba8>Locked"
     - "<#a6adc8>Required Rank: <rank>"
-
-  # Lore appended to the equipped Custom Hat showing the original base helmet info
   hat-base-armor-lore:
     - ""
     - "<base_icon> <#a6adc8>Base Armor: <base_name>"
 
-# Custom Hats storage (Managed automatically via /hat admin)
 hats:
   items: []
   definitions: {}
@@ -41,20 +29,14 @@ rename:
 
 messages:
   prefix: ""
-
-  # Enforcement
   remove-trim: "<#f38ba8>You do not have permission to own or wear trimmed armor."
   deny-smith: "<#f38ba8>You are not allowed to apply armor trims at a Smithing Table."
   no-permission-gui: "<#f38ba8>You do not have access to this feature. Required rank: <rank>"
-
-  # Trim Studio
   trim-selected: "<#cdd6f4>Applied <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to <slot_icon> <#74c7ec><slot><#cdd6f4>."
   trim-applied-all: "<#cdd6f4>Synced <pattern_icon> <#89dceb><pattern> <#6c7086>(<material_icon> <#fab387><material><#6c7086>) <#cdd6f4>to all <#cba6f7>4 armor pieces<#cdd6f4>."
   trim-cleared: "<#cdd6f4>Cleared active trim for <slot_icon> <#74c7ec><slot><#cdd6f4>."
   trim-cleared-all: "<#cdd6f4>Cleared active trims across all <#cba6f7>4 armor pieces<#cdd6f4>."
   trim-hat-active: "<#fab387>Helmet trim is paused while a Custom Hat is active."
-
-  # Custom Hat Studio & Admin Editor
   hat-selected: "<white><sprite:items:item/netherite_helmet></white> <#cdd6f4>Equipped custom hat <hat><#cdd6f4>."
   hat-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Restored your default helmet appearance."
   hat-admin-prompt-id: "<white><sprite:items:item/command_block></white> <#cdd6f4>Type the <#89dceb>Nexo Item ID<#cdd6f4> in chat, or type <#f38ba8>cancel<#cdd6f4>."
@@ -69,16 +51,12 @@ messages:
   hat-admin-name-reset: "<#cdd6f4>Reset display name for <#89dceb><id><#cdd6f4>."
   hat-admin-lore-updated: "<#a6e3a1>Updated lore for <#89dceb><id><#a6e3a1>."
   hat-admin-lore-reset: "<#cdd6f4>Cleared custom lore for <#89dceb><id><#cdd6f4>."
-
-  # Rename Studio
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
   rename-cancelled: "<#a6adc8>Item rename cancelled."
   rename-no-item: "<#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
   rename-too-long: "<#f38ba8>Name is too long (Max <#f9e2af><max><#f38ba8> characters)."
   rename-success: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Renamed item to <name><#cdd6f4>."
   rename-reset: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Reset item name to default."
-
-  # System
   reload-success: "<#a6e3a1>Configuration reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
