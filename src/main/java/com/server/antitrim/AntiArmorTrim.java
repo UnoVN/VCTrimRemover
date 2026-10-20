@@ -26,11 +26,19 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -57,10 +65,18 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private Method nexoItemNamesMethod;
   private Method nexoBuilderBuildMethod;
 
+  private String jdbcUrl;
+  private final List<String> dbHatItems = new ArrayList<>();
+  private final Map<String, String> dbHatNames = new LinkedHashMap<>();
+  private final Map<String, List<String>> dbHatLores = new LinkedHashMap<>();
+  private boolean dbForceDefaultHat = false;
+  private String dbDefaultHat = "";
+
   @Override
   public void onEnable() {
     instance = this;
     saveDefaultConfig();
+    initHatDatabase();
     this.guiManager = new TrimGuiManager(this);
     this.trimListener = new TrimListener(this, guiManager);
     getServer().getPluginManager().registerEvents(trimListener, this);
@@ -71,7 +87,162 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     registerCmd("hat");
     registerCmd("rename");
     Bukkit.getScheduler().runTaskLater(this, this::forceTakeoverCommands, 20L);
-    getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + Nexo Hat Replacer) enabled!");
+    getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + SQLite Nexo Hat Replacer) enabled!");
+  }
+
+  public void initHatDatabase() {
+    try {
+      if (!getDataFolder().exists()) getDataFolder().mkdirs();
+      File dbFile = new File(getDataFolder(), "database.db");
+      this.jdbcUrl = "jdbc:sqlite:" + dbFile.getAbsolutePath();
+      try (Connection conn = DriverManager.getConnection(jdbcUrl);
+           Statement st = conn.createStatement()) {
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_items (hat_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)");
+      }
+      loadHatsFromDatabase();
+
+      // Tu dong migrate tu config.yml sang SQLite neu database dang trong
+      if (dbHatItems.isEmpty()) {
+        List<String> cfgItems = getConfig().getStringList("hats.items");
+        if (!cfgItems.isEmpty()) {
+          for (String id : cfgItems) {
+            String name = getConfig().getString("hats.definitions." + id + ".display-name");
+            List<String> lore = getConfig().contains("hats.definitions." + id + ".lore")
+                ? getConfig().getStringList("hats.definitions." + id + ".lore") : null;
+            addHatToDb(id);
+            if (name != null) setHatNameInDb(id, name);
+            if (lore != null) setHatLoreInDb(id, lore);
+          }
+        }
+        String cfgDef = getConfig().getString("hats.default-hat", "");
+        boolean cfgForce = getConfig().getBoolean("hats.force-default-hat", false);
+        if (cfgForce || (cfgDef != null && !cfgDef.isBlank())) {
+          setDefaultHatInDb(cfgDef, cfgForce);
+        }
+      }
+    } catch (Throwable e) {
+      getLogger().warning("Failed to initialize SQLite hat database: " + e.getMessage());
+    }
+  }
+
+  public void loadHatsFromDatabase() {
+    dbHatItems.clear();
+    dbHatNames.clear();
+    dbHatLores.clear();
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         Statement st = conn.createStatement()) {
+      try (ResultSet rs = st.executeQuery("SELECT hat_id, display_name, lore FROM hat_items ORDER BY sort_order ASC, rowid ASC")) {
+        while (rs.next()) {
+          String id = rs.getString("hat_id");
+          String name = rs.getString("display_name");
+          String loreRaw = rs.getString("lore");
+          dbHatItems.add(id);
+          if (name != null && !name.isBlank()) dbHatNames.put(id, name);
+          if (loreRaw != null) {
+            dbHatLores.put(id, loreRaw.isEmpty() ? new ArrayList<>() : new ArrayList<>(Arrays.asList(loreRaw.split("\n", -1))));
+          }
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT setting_key, setting_value FROM hat_settings")) {
+        while (rs.next()) {
+          String k = rs.getString("setting_key");
+          String v = rs.getString("setting_value");
+          if ("force_default_hat".equalsIgnoreCase(k)) dbForceDefaultHat = Boolean.parseBoolean(v);
+          else if ("default_hat".equalsIgnoreCase(k)) dbDefaultHat = v != null ? v : "";
+        }
+      }
+    } catch (Throwable ignored) {}
+  }
+
+  public List<String> getDbHatItems() {
+    return Collections.unmodifiableList(dbHatItems);
+  }
+
+  @Nullable
+  public String getDbHatDisplayName(String hatId) {
+    return dbHatNames.get(hatId);
+  }
+
+  @Nullable
+  public List<String> getDbHatLore(String hatId) {
+    return dbHatLores.get(hatId);
+  }
+
+  public boolean isDbForceDefaultHat() {
+    return dbForceDefaultHat;
+  }
+
+  @Nullable
+  public String getDbDefaultHat() {
+    return (dbDefaultHat == null || dbDefaultHat.isBlank()) ? null : dbDefaultHat.trim();
+  }
+
+  public void addHatToDb(String hatId) {
+    String clean = hatId.trim();
+    if (dbHatItems.stream().noneMatch(h -> h.equalsIgnoreCase(clean))) {
+      dbHatItems.add(clean);
+      try (Connection conn = DriverManager.getConnection(jdbcUrl);
+           PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO hat_items (hat_id, sort_order) VALUES (?, ?)")) {
+        ps.setString(1, clean);
+        ps.setInt(2, dbHatItems.size());
+        ps.executeUpdate();
+      } catch (Throwable ignored) {}
+    }
+  }
+
+  public boolean removeHatFromDb(String hatId) {
+    String matched = dbHatItems.stream().filter(h -> h.equalsIgnoreCase(hatId)).findFirst().orElse(null);
+    if (matched == null) return false;
+    dbHatItems.remove(matched);
+    dbHatNames.remove(matched);
+    dbHatLores.remove(matched);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM hat_items WHERE hat_id = ?")) {
+      ps.setString(1, matched);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+    if (matched.equalsIgnoreCase(dbDefaultHat)) {
+      setDefaultHatInDb("", false);
+    }
+    return true;
+  }
+
+  public void setHatNameInDb(String hatId, @Nullable String displayName) {
+    if (displayName == null || displayName.isBlank()) dbHatNames.remove(hatId);
+    else dbHatNames.put(hatId, displayName);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE hat_items SET display_name = ? WHERE hat_id = ?")) {
+      ps.setString(1, displayName);
+      ps.setString(2, hatId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setHatLoreInDb(String hatId, @Nullable List<String> lore) {
+    if (lore == null) dbHatLores.remove(hatId);
+    else dbHatLores.put(hatId, new ArrayList<>(lore));
+    String joined = lore == null ? null : String.join("\n", lore);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE hat_items SET lore = ? WHERE hat_id = ?")) {
+      ps.setString(1, joined);
+      ps.setString(2, hatId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setDefaultHatInDb(@Nullable String defaultHatId, boolean force) {
+    this.dbDefaultHat = defaultHatId == null ? "" : defaultHatId.trim();
+    this.dbForceDefaultHat = force;
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_settings (setting_key, setting_value) VALUES (?, ?)")) {
+      ps.setString(1, "default_hat");
+      ps.setString(2, this.dbDefaultHat);
+      ps.executeUpdate();
+      ps.setString(1, "force_default_hat");
+      ps.setString(2, String.valueOf(this.dbForceDefaultHat));
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
   }
 
   private void registerCmd(String name) {
@@ -279,7 +450,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           return;
         }
         sub = args[1].toLowerCase();
-        args = java.util.Arrays.copyOfRange(args, 1, args.length);
+        args = Arrays.copyOfRange(args, 1, args.length);
       }
       if (sub.equals("default") && args.length >= 2) {
         String rawId = args[1].trim();
@@ -292,16 +463,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       }
       if (sub.equals("add") && args.length >= 2) {
         String rawId = args[1].trim();
-        List<String> hats = new ArrayList<>(getConfig().getStringList("hats.items"));
-        if (hats.stream().anyMatch(h -> h.equalsIgnoreCase(rawId))) {
+        if (getDbHatItems().stream().anyMatch(h -> h.equalsIgnoreCase(rawId))) {
           p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
           p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
           guiManager.openHatEditorMenu(p, rawId);
           return;
         }
-        hats.add(rawId);
-        getConfig().set("hats.items", hats);
-        saveConfig();
+        addHatToDb(rawId);
         if (getNexoItem(rawId) != null) {
           p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
           p.sendMessage(getMessage("hat-admin-added", Placeholder.unparsed("id", rawId)));
@@ -355,6 +523,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args[0].equalsIgnoreCase("reload")) {
         if (!hasAdminPerm(sender)) { sender.sendMessage(getMessage("no-permission")); return true; }
         reloadConfig();
+        loadHatsFromDatabase();
         forceTakeoverCommands();
         if (trimListener != null) {
           for (World world : Bukkit.getWorlds()) trimListener.lockAlwaysDaytime(world);
@@ -394,7 +563,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args.length == 2 && args[0].equalsIgnoreCase("default")) {
         String prefix = args[1].toLowerCase();
         List<String> opts = new ArrayList<>(List.of("off", "none"));
-        opts.addAll(getConfig().getStringList("hats.items"));
+        opts.addAll(getDbHatItems());
         opts.addAll(getAllNexoItemIds());
         return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
       }
@@ -417,7 +586,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
         if (sub.equals("edit") || sub.equals("remove")) {
-          return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+          return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
         }
       }
       if (args.length == 3 && args[0].equalsIgnoreCase("admin")) {
@@ -430,7 +599,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
         if (sub.equals("edit") || sub.equals("remove")) {
-          return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+          return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
         }
       }
     }
