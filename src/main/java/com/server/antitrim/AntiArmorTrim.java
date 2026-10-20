@@ -271,7 +271,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       return;
     }
     String sub = args[0].toLowerCase();
-    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove") || sub.equals("delete")) {
+    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove") || sub.equals("delete") || sub.equals("default")) {
       if (!hasAdminPerm(p)) {
         p.sendMessage(getMessage("no-permission"));
         return;
@@ -283,6 +283,15 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         }
         sub = args[1].toLowerCase();
         args = java.util.Arrays.copyOfRange(args, 1, args.length);
+      }
+      if (sub.equals("default") && args.length >= 2) {
+        String rawId = args[1].trim();
+        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
+          guiManager.setForceDefaultHat(p, null, false);
+        } else {
+          guiManager.setForceDefaultHat(p, rawId, true);
+        }
+        return;
       }
       if (sub.equals("add") && args.length >= 2) {
         String rawId = args[1].trim();
@@ -360,6 +369,16 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         sender.sendMessage(getMessage("reload-success"));
         return true;
       }
+      if (args[0].equalsIgnoreCase("default") && args.length >= 2 && sender instanceof Player p) {
+        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
+        String rawId = args[1].trim();
+        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear")) {
+          guiManager.setForceDefaultHat(p, null, false);
+        } else {
+          guiManager.setForceDefaultHat(p, rawId, true);
+        }
+        return true;
+      }
       if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
         guiManager.openHatAdminMenu(p);
@@ -373,22 +392,32 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   @Override
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
     String cmd = command.getName().toLowerCase();
-    if (cmd.equals("antitrim") && args.length == 1 && hasAdminPerm(sender)) {
-      return List.of("reload", "hats", "admin");
+    if (cmd.equals("antitrim") && hasAdminPerm(sender)) {
+      if (args.length == 1) return List.of("reload", "hats", "admin", "default");
+      if (args.length == 2 && args[0].equalsIgnoreCase("default")) {
+        String prefix = args[1].toLowerCase();
+        List<String> opts = new ArrayList<>(List.of("off", "none"));
+        opts.addAll(getConfig().getStringList("hats.items"));
+        opts.addAll(getAllNexoItemIds());
+        return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+      }
     }
     if (cmd.equals("hat") && hasAdminPerm(sender)) {
       if (args.length == 1) {
         String prefix = args[0].toLowerCase();
-        return List.of("admin", "add", "edit", "remove").stream().filter(s -> s.startsWith(prefix)).toList();
+        return List.of("admin", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
       }
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
         if (sub.equals("admin")) {
-          return List.of("add", "edit", "remove").stream().filter(s -> s.startsWith(prefix)).toList();
+          return List.of("add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
         }
-        if (sub.equals("add")) {
-          return getAllNexoItemIds().stream().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        if (sub.equals("add") || sub.equals("default")) {
+          List<String> opts = new ArrayList<>();
+          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
+          opts.addAll(getAllNexoItemIds());
+          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
         if (sub.equals("edit") || sub.equals("remove")) {
           return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
@@ -397,8 +426,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args.length == 3 && args[0].equalsIgnoreCase("admin")) {
         String sub = args[1].toLowerCase();
         String prefix = args[2].toLowerCase();
-        if (sub.equals("add")) {
-          return getAllNexoItemIds().stream().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        if (sub.equals("add") || sub.equals("default")) {
+          List<String> opts = new ArrayList<>();
+          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
+          opts.addAll(getAllNexoItemIds());
+          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
         if (sub.equals("edit") || sub.equals("remove")) {
           return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
