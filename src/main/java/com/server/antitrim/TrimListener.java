@@ -31,7 +31,6 @@ import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
-import org.bukkit.inventory.meta.ItemMeta;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -91,7 +90,6 @@ public class TrimListener implements Listener {
       return;
     }
 
-    // Khoi phuc mu Kim Cuong / Netherite that NGAY LAP TUC truoc khi PerPlayerKit / Kit plugin xu ly lenh
     String cmdToken = lower.split("\\s+")[0];
     if (cmdToken.contains(":")) cmdToken = "/" + cmdToken.substring(cmdToken.indexOf(':') + 1);
     if (cmdToken.startsWith("/kit") || cmdToken.equals("/k") || cmdToken.matches("/k[1-9]")
@@ -198,8 +196,7 @@ public class TrimListener implements Listener {
       ItemStack drop = drops.get(i);
       if (guiManager.isCustomHatItem(drop)) drops.set(i, guiManager.restoreOriginalHelmet(drop));
     }
-    Player player = event.getPlayer();
-    guiManager.restoreAllCustomHatsInInventory(player);
+    guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
   }
 
   @EventHandler(priority = EventPriority.HIGHEST)
@@ -259,26 +256,35 @@ public class TrimListener implements Listener {
     guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
   }
 
-  // Chay o LOWEST de tra ve mu Kim Cuong / Netherite that TRUOC KHI PerPlayerKit doc kho do khi mo GUI
+  // Chi tra ve mu that khi mo GUI ngoai (nhu PerPlayerKit /kit), KHONG dong vao khi bam E mo kho do ca nhan
   @EventHandler(priority = EventPriority.LOWEST)
   public void onOpenLowest(InventoryOpenEvent event) {
-    if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
+    if (!guiManager.isExternalGui(event.getInventory())) return;
     if (event.getPlayer() instanceof Player player) {
       guiManager.restoreAllCustomHatsInInventory(player);
     }
   }
 
-  // Chay o LOWEST de khi nguoi choi bam nut Save Kit / Import Inventory trong GUI cua PerPlayerKit, mu tren dau luon la mu that
   @EventHandler(priority = EventPriority.LOWEST)
   public void onClickLowest(InventoryClickEvent event) {
     if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
     if (!(event.getWhoClicked() instanceof Player player)) return;
 
+    // Neu dang o trong GUI ngoai (nhu PerPlayerKit), luon giu mu that de Save Kit
+    if (guiManager.isExternalGui(event.getInventory())) {
+      guiManager.restoreAllCustomHatsInInventory(player);
+      return;
+    }
+
+    // Neu dang o trong kho do ca nhan (E), CHI khoi phuc mu that khi nguoi choi click TRUC TIEP vao mu
+    boolean clickedHat = false;
     if (guiManager.isCustomHatItem(event.getCurrentItem())) {
       event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
+      clickedHat = true;
     }
     if (guiManager.isCustomHatItem(event.getCursor())) {
       event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
+      clickedHat = true;
     }
     if (event.getClick() == ClickType.NUMBER_KEY) {
       int hotbarBtn = event.getHotbarButton();
@@ -286,25 +292,41 @@ public class TrimListener implements Listener {
         ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
         if (guiManager.isCustomHatItem(hotbarItem)) {
           player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
+          clickedHat = true;
         }
       }
     } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
       ItemStack offhand = player.getInventory().getItemInOffHand();
       if (guiManager.isCustomHatItem(offhand)) {
         player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
+        clickedHat = true;
       }
     }
-    guiManager.restoreAllCustomHatsInInventory(player);
+
+    if (clickedHat) {
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (player.isOnline()) scanAndClean(player);
+      });
+    }
   }
 
-  // Chay o LOWEST khi dong GUI (truoc khi PerPlayerKit luu Kit khi dong menu), sau do 2 ticks tu dong doi lai Nexo Hat
+  // Khi dong kho do ca nhan (E): KHONG thao mu tren dau ra, chi quet nhe de tranh flicker
   @EventHandler(priority = EventPriority.LOWEST)
   public void onCloseLowest(InventoryCloseEvent event) {
-    if (event.getPlayer() instanceof Player player) {
+    if (!(event.getPlayer() instanceof Player player)) return;
+
+    ItemStack cursor = player.getItemOnCursor();
+    if (guiManager.isCustomHatItem(cursor)) {
+      player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
+    }
+
+    if (guiManager.isExternalGui(event.getInventory())) {
       guiManager.restoreAllCustomHatsInInventory(player);
       Bukkit.getScheduler().runTaskLater(plugin, () -> {
         if (player.isOnline()) scanAndClean(player);
-      }, 2L);
+      }, 1L);
+    } else {
+      scanAndClean(player);
     }
   }
 
@@ -312,11 +334,6 @@ public class TrimListener implements Listener {
   public void onClick(InventoryClickEvent event) {
     if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
     if (!(event.getWhoClicked() instanceof Player player)) return;
-
-    Bukkit.getScheduler().runTask(plugin, () -> {
-      if (player.isOnline()) scanAndClean(player);
-    });
-
     if (guiManager.canUseBypass(player)) return;
 
     boolean triggered = false;
