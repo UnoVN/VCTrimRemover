@@ -25,7 +25,6 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.weather.ThunderChangeEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
-import org.bukkit.event.world.TimeSkipEvent;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -77,10 +76,12 @@ public class TrimListener implements Listener {
     setRuleFalse(world, "org.bukkit.GameRule", "DO_DAYLIGHT_CYCLE");
     setRuleFalse(world, "org.bukkit.GameRule", "DO_WEATHER_CYCLE");
 
-    world.setTime(6000L);
-    world.setStorm(false);
-    world.setThundering(false);
-    world.setClearWeatherDuration(Integer.MAX_VALUE);
+    if (world.getEnvironment() == World.Environment.NORMAL) {
+      if (world.getTime() != 6000L) world.setTime(6000L);
+      if (world.hasStorm()) world.setStorm(false);
+      if (world.isThundering()) world.setThundering(false);
+      world.setClearWeatherDuration(Integer.MAX_VALUE);
+    }
   }
 
   private void setRuleFalse(World world, String className, String fieldName) {
@@ -95,12 +96,6 @@ public class TrimListener implements Listener {
 
   @EventHandler(priority = EventPriority.HIGHEST)
   public void onWorldLoad(WorldLoadEvent event) { lockAlwaysDaytime(event.getWorld()); }
-
-  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-  public void onTimeSkip(TimeSkipEvent event) {
-    event.setCancelled(true);
-    event.getWorld().setTime(6000L);
-  }
 
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onWeatherChange(WeatherChangeEvent event) {
