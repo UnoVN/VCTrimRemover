@@ -3,14 +3,13 @@ version: 2.5.0
 main: com.server.antitrim.AntiArmorTrim
 api-version: '1.21'
 author: LeThienNhan
-softdepend: [LuckPerms, Nexo]
+softdepend: [LuckPerms, Nexo, Essentials]
 description: Catppuccin Decoration Studio - Armor Trim, Nexo Custom Hats & Item Rename.
 
 commands:
   antitrim:
     description: Admin command for AntiArmorTrim
     aliases: [at, vctrim]
-    permission: armortrim.admin
   decor:
     description: Open the Decoration Studio Hub GUI
     aliases: [cosmetics, studio]
