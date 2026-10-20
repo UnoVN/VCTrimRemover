@@ -24,6 +24,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.event.weather.ThunderChangeEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
 import org.bukkit.event.world.WorldLoadEvent;
@@ -69,7 +70,12 @@ public class TrimListener implements Listener {
     }, 60L, 60L);
   }
 
-  // Uu tien lenh /hat va /hat admin truoc Essentials
+  @EventHandler(priority = EventPriority.MONITOR)
+  public void onServerLoad(ServerLoadEvent event) {
+    plugin.forceTakeoverCommands();
+    Bukkit.getScheduler().runTaskLater(plugin, plugin::forceTakeoverCommands, 20L);
+  }
+
   @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
   public void onCommandPreprocess(PlayerCommandPreprocessEvent event) {
     String msg = event.getMessage().trim();
@@ -139,7 +145,7 @@ public class TrimListener implements Listener {
       if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
     }
 
-    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+    if (guiManager.canUseBypass(player)) return;
 
     boolean removed = false;
     ItemStack[] contents = player.getInventory().getContents();
@@ -294,7 +300,7 @@ public class TrimListener implements Listener {
       });
     }
 
-    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+    if (guiManager.canUseBypass(player)) return;
 
     boolean triggered = false;
     if (hasArmorTrim(event.getCurrentItem())) {
@@ -326,7 +332,7 @@ public class TrimListener implements Listener {
       item = guiManager.restoreOriginalHelmet(item);
       player.getInventory().setItem(event.getHand(), item);
     }
-    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+    if (guiManager.canUseBypass(player)) return;
     if (hasArmorTrim(item)) {
       event.setCancelled(true);
       if (event.getHand() != null) player.getInventory().setItem(event.getHand(), null);
@@ -342,7 +348,7 @@ public class TrimListener implements Listener {
         picked = guiManager.restoreOriginalHelmet(picked);
         event.getItem().setItemStack(picked);
       }
-      if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+      if (guiManager.canUseBypass(player)) return;
       if (hasArmorTrim(picked)) {
         event.setCancelled(true);
         event.getItem().remove();
@@ -354,7 +360,7 @@ public class TrimListener implements Listener {
   @EventHandler(priority = EventPriority.HIGHEST)
   public void onSmith(PrepareSmithingEvent event) {
     if (event.getView().getPlayer() instanceof Player player) {
-      if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+      if (guiManager.canUseBypass(player)) return;
       if (hasArmorTrim(event.getResult())) {
         event.setResult(null);
         player.sendActionBar(plugin.getRawMessage("deny-smith"));
