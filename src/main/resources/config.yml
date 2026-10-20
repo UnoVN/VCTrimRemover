@@ -62,7 +62,7 @@ messages:
   rename-too-long: "<#f38ba8>Name is too long (Max <#f9e2af><max><#f38ba8> characters)."
   rename-success: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Renamed item to <name><#cdd6f4>."
   rename-reset: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Reset item name to default."
-  reload-success: "<#a6e3a1>Configuration reloaded."
+  reload-success: "<#a6e3a1>Configuration & SQLite Hat Database reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
   usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | default <id|off>"
