@@ -174,6 +174,55 @@ public class TrimGuiManager implements Listener {
   public boolean canUseRename(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.RENAME_PERM) || canUseBypass(p); }
   public boolean canUseHat(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.HAT_PERM) || canUseBypass(p); }
 
+  public boolean isForceDefaultHat() {
+    return plugin.getConfig().getBoolean("hats.force-default-hat", false);
+  }
+
+  @Nullable
+  public String getDefaultHatId() {
+    String def = plugin.getConfig().getString("hats.default-hat", "");
+    return (def == null || def.isBlank()) ? null : def.trim();
+  }
+
+  @Nullable
+  public String getEffectiveHatId(Player player) {
+    String saved = getSavedHatId(player);
+    if (canUseHat(player) && saved != null && !saved.isBlank() && plugin.getNexoItem(saved) != null) {
+      return saved;
+    }
+    String defHat = getDefaultHatId();
+    if (isForceDefaultHat() && defHat != null && plugin.getNexoItem(defHat) != null) {
+      return defHat;
+    }
+    return null;
+  }
+
+  public void setForceDefaultHat(Player admin, @Nullable String hatId, boolean enabled) {
+    if (hatId != null && !hatId.isBlank()) {
+      String cleanId = hatId.trim();
+      List<String> hats = new ArrayList<>(plugin.getConfig().getStringList("hats.items"));
+      if (hats.stream().noneMatch(h -> h.equalsIgnoreCase(cleanId))) {
+        hats.add(cleanId);
+        plugin.getConfig().set("hats.items", hats);
+      }
+      plugin.getConfig().set("hats.default-hat", cleanId);
+      plugin.getConfig().set("hats.force-default-hat", enabled);
+      plugin.saveConfig();
+      admin.playSound(admin.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f);
+      admin.sendMessage(plugin.getMessage("hat-admin-default-set", Placeholder.unparsed("id", cleanId)));
+    } else {
+      plugin.getConfig().set("hats.default-hat", "");
+      plugin.getConfig().set("hats.force-default-hat", false);
+      plugin.saveConfig();
+      admin.playSound(admin.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+      admin.sendMessage(plugin.getMessage("hat-admin-default-cleared"));
+    }
+    for (Player online : Bukkit.getOnlinePlayers()) {
+      forceRefreshEquippedHat(online);
+      applyAllSavedTrims(online);
+    }
+  }
+
   public String toMiniFont(String text) {
     if (text == null || text.isEmpty()) return "";
     StringBuilder sb = new StringBuilder(text.length());
@@ -436,19 +485,19 @@ public class TrimGuiManager implements Listener {
 
   public void applySavedTrimToSlot(Player player, EquipmentSlot slot) {
     if (slot == EquipmentSlot.HEAD) {
-      String savedHat = getSavedHatId(player);
+      String effectiveHat = getEffectiveHatId(player);
       ItemStack headItem = player.getInventory().getHelmet();
 
-      if (canUseHat(player) && savedHat != null && plugin.getNexoItem(savedHat) != null) {
+      if (effectiveHat != null) {
         if (isCustomHatItem(headItem)) {
-          if (!isCosmeticHatValid(headItem, savedHat)) {
+          if (!isCosmeticHatValid(headItem, effectiveHat)) {
             ItemStack restored = restoreOriginalHelmet(headItem);
-            ItemStack updatedHat = createCosmeticHatFromHelmet(restored, savedHat);
+            ItemStack updatedHat = createCosmeticHatFromHelmet(restored, effectiveHat);
             if (updatedHat != null) player.getInventory().setHelmet(updatedHat);
           }
           return;
         } else if (isTargetHelmet(headItem)) {
-          ItemStack cosmeticHat = createCosmeticHatFromHelmet(headItem, savedHat);
+          ItemStack cosmeticHat = createCosmeticHatFromHelmet(headItem, effectiveHat);
           if (cosmeticHat != null) player.getInventory().setHelmet(cosmeticHat);
           return;
         }
@@ -527,7 +576,8 @@ public class TrimGuiManager implements Listener {
     for (int i = 36; i < 54; i++) inv.setItem(i, filler);
 
     List<String> hatIds = plugin.getConfig().getStringList("hats.items");
-    String currentHat = getSavedHatId(player);
+    String currentHat = getEffectiveHatId(player);
+    String defHat = getDefaultHatId();
     int slotIndex = 0;
 
     for (String hatId : hatIds) {
@@ -536,6 +586,7 @@ public class TrimGuiManager implements Listener {
       if (nexoStack == null) continue;
 
       boolean selected = hatId.equalsIgnoreCase(currentHat);
+      boolean isDefault = isForceDefaultHat() && defHat != null && hatId.equalsIgnoreCase(defHat);
       ItemStack icon = nexoStack.clone();
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
@@ -544,6 +595,7 @@ public class TrimGuiManager implements Listener {
         if (selected) meta.setEnchantmentGlintOverride(true);
 
         List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
+        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Server Hat"));
         appendSelectionOrLockedLore(player, lore, AntiArmorTrim.HAT_PERM, selected);
         meta.lore(lore);
 
@@ -560,13 +612,13 @@ public class TrimGuiManager implements Listener {
 
     inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
-    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Disable custom hat and restore"), plugin.parse("<#a6adc8>your original helmet appearance.")));
+    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Disable custom hat and restore"), plugin.parse("<#a6adc8>your default helmet appearance.")));
     appendLockedLoreIfNeeded(player, clearLore, AntiArmorTrim.HAT_PERM);
     inv.setItem(49, createStyledButton(Material.BARRIER, "<#f38ba8><bold>Reset & Unequip Hat</bold>", clearLore));
 
     if (plugin.hasAdminPerm(player)) {
       inv.setItem(53, createStyledButton(Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin Hat Manager</bold>", List.of(
-          plugin.parse("<#a6adc8>Manage Nexo hats, edit display"), plugin.parse("<#a6adc8>names, lore, or remove broken IDs."))));
+          plugin.parse("<#a6adc8>Manage Nexo hats, edit display"), plugin.parse("<#a6adc8>names, lore, or default hat."))));
     }
     player.openInventory(inv);
   }
@@ -581,12 +633,14 @@ public class TrimGuiManager implements Listener {
     for (int i = 36; i < 54; i++) inv.setItem(i, filler);
 
     List<String> hatIds = plugin.getConfig().getStringList("hats.items");
+    String defHat = getDefaultHatId();
     int slotIndex = 0;
 
     for (String hatId : hatIds) {
       if (slotIndex >= 36) break;
       ItemStack nexoStack = plugin.getNexoItem(hatId);
       ItemStack icon;
+      boolean isDefault = defHat != null && hatId.equalsIgnoreCase(defHat);
 
       if (nexoStack != null) {
         icon = nexoStack.clone();
@@ -594,9 +648,12 @@ public class TrimGuiManager implements Listener {
         if (meta != null) {
           hideAllVanillaTooltips(meta);
           meta.displayName(getHatDisplayName(hatId, nexoStack).append(plugin.parse(" <#6c7086>(" + hatId + ")")));
+          if (isDefault && isForceDefaultHat()) meta.setEnchantmentGlintOverride(true);
           List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
+          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Hat (" + (isForceDefaultHat() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
           lore.add(Component.empty());
           lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Edit Display Name & Lore"));
+          lore.add(plugin.parse("<#f9e2af>Shift-Left-Click: <#cdd6f4>Set as Forced Default Hat"));
           lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Hat"));
           meta.lore(lore);
 
@@ -624,6 +681,16 @@ public class TrimGuiManager implements Listener {
     inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
     inv.setItem(49, createStyledButton(Material.ANVIL, "<#a6e3a1><bold>Add New Nexo Hat</bold>", List.of(
         plugin.parse("<#a6adc8>Click to type a Nexo Item ID"), plugin.parse("<#a6adc8>in chat and add it to the studio."))));
+
+    String statusText = isForceDefaultHat() ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled";
+    String defHatText = (defHat != null) ? "<#89dceb>" + defHat : "<#6c7086>None";
+    inv.setItem(51, createStyledButton(Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
+        plugin.parse("<#a6adc8>Status: " + statusText),
+        plugin.parse("<#a6adc8>Default Hat: " + defHatText),
+        Component.empty(),
+        plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Toggle Force Default Hat"),
+        plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Clear Default Hat"))));
+
     player.openInventory(inv);
   }
 
@@ -655,6 +722,13 @@ public class TrimGuiManager implements Listener {
     ItemStack previewHat = createCosmeticHatFromHelmet(new ItemStack(Material.NETHERITE_HELMET), hatId);
     if (previewHat != null) inv.setItem(14, previewHat);
 
+    boolean isDef = isForceDefaultHat() && hatId.equalsIgnoreCase(getDefaultHatId());
+    inv.setItem(15, createStyledButton(Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
+        plugin.parse("<#a6adc8>Current: " + (isDef ? "<#a6e3a1>Active Default Hat" : "<#6c7086>Not Default")),
+        Component.empty(),
+        plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set as Forced Default Hat"),
+        plugin.parse("<#fab387>Right-Click: <#cdd6f4>Disable Forced Default Hat"))));
+
     inv.setItem(16, createStyledButton(Material.BARRIER, "<#f38ba8><bold>Delete Hat</bold>", List.of(plugin.parse("<#a6adc8>Remove <#f9e2af>" + hatId + " <#a6adc8>from the studio."))));
     inv.setItem(18, createBackButton("<#f9e2af><bold>Back</bold>"));
     player.openInventory(inv);
@@ -670,12 +744,14 @@ public class TrimGuiManager implements Listener {
     if (hats.removeIf(h -> h.equalsIgnoreCase(hatId))) {
       plugin.getConfig().set("hats.items", hats);
       plugin.getConfig().set("hats.definitions." + hatId, null);
+      if (hatId.equalsIgnoreCase(getDefaultHatId())) {
+        plugin.getConfig().set("hats.default-hat", "");
+        plugin.getConfig().set("hats.force-default-hat", false);
+      }
       plugin.saveConfig();
       for (Player online : Bukkit.getOnlinePlayers()) {
-        if (hatId.equalsIgnoreCase(getSavedHatId(online))) {
-          setSavedHatId(online, null);
-          forceRefreshEquippedHat(online);
-        }
+        if (hatId.equalsIgnoreCase(getSavedHatId(online))) setSavedHatId(online, null);
+        forceRefreshEquippedHat(online);
       }
       player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
       player.sendMessage(plugin.getMessage("hat-admin-removed", Placeholder.unparsed("id", hatId)));
@@ -816,7 +892,7 @@ public class TrimGuiManager implements Listener {
 
     lore.add(plugin.parse("<#a6adc8>Pattern: " + patternDisplay));
     lore.add(plugin.parse("<#a6adc8>Material: " + materialDisplay));
-    if (slot == EquipmentSlot.HEAD && getSavedHatId(player) != null) lore.add(plugin.parse("<#fab387>Custom Hat Active (Trim Paused)"));
+    if (slot == EquipmentSlot.HEAD && getEffectiveHatId(player) != null) lore.add(plugin.parse("<#fab387>Custom Hat Active (Trim Paused)"));
 
     if (meta instanceof ArmorMeta armorMeta && pOpt != null && mOpt != null) {
       ArmorTrim previewTrim = buildArmorTrim(patternKey, materialKey);
@@ -998,6 +1074,7 @@ public class TrimGuiManager implements Listener {
           return;
         }
         setSavedHatId(player, null);
+        forceRefreshEquippedHat(player);
         applyAllSavedTrims(player);
         player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
         player.sendMessage(plugin.getMessage("hat-cleared"));
@@ -1037,6 +1114,28 @@ public class TrimGuiManager implements Listener {
         player.sendMessage(plugin.getMessage("hat-admin-prompt-id"));
         return;
       }
+      if (rawSlot == 51) {
+        if (event.isRightClick()) {
+          setForceDefaultHat(player, null, false);
+        } else {
+          boolean nextState = !isForceDefaultHat();
+          plugin.getConfig().set("hats.force-default-hat", nextState);
+          if (nextState && getDefaultHatId() == null) {
+            List<String> items = plugin.getConfig().getStringList("hats.items");
+            if (!items.isEmpty()) plugin.getConfig().set("hats.default-hat", items.get(0));
+          }
+          plugin.saveConfig();
+          for (Player online : Bukkit.getOnlinePlayers()) {
+            forceRefreshEquippedHat(online);
+            applyAllSavedTrims(online);
+          }
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-default-toggled",
+              Placeholder.parsed("state", nextState ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled")));
+        }
+        openHatAdminMenu(player);
+        return;
+      }
       if (rawSlot < 36) {
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
@@ -1045,6 +1144,11 @@ public class TrimGuiManager implements Listener {
 
         if (plugin.getNexoItem(hatId) == null || event.isRightClick()) {
           deleteHatFromConfig(player, hatId);
+          openHatAdminMenu(player);
+          return;
+        }
+        if (event.isShiftClick()) {
+          setForceDefaultHat(player, hatId, true);
           openHatAdminMenu(player);
           return;
         }
@@ -1065,7 +1169,7 @@ public class TrimGuiManager implements Listener {
           plugin.getConfig().set("hats.definitions." + hatId + ".display-name", null);
           plugin.saveConfig();
           for (Player online : Bukkit.getOnlinePlayers()) {
-            if (hatId.equalsIgnoreCase(getSavedHatId(online))) forceRefreshEquippedHat(online);
+            if (hatId.equalsIgnoreCase(getEffectiveHatId(online))) forceRefreshEquippedHat(online);
           }
           player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
           player.sendMessage(plugin.getMessage("hat-admin-name-reset", Placeholder.unparsed("id", hatId)));
@@ -1084,7 +1188,7 @@ public class TrimGuiManager implements Listener {
           plugin.getConfig().set("hats.definitions." + hatId + ".lore", null);
           plugin.saveConfig();
           for (Player online : Bukkit.getOnlinePlayers()) {
-            if (hatId.equalsIgnoreCase(getSavedHatId(online))) forceRefreshEquippedHat(online);
+            if (hatId.equalsIgnoreCase(getEffectiveHatId(online))) forceRefreshEquippedHat(online);
           }
           player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
           player.sendMessage(plugin.getMessage("hat-admin-lore-reset", Placeholder.unparsed("id", hatId)));
@@ -1096,6 +1200,15 @@ public class TrimGuiManager implements Listener {
         pendingHatLoreEdit.put(player.getUniqueId(), hatId);
         player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
         player.sendMessage(plugin.getMessage("hat-admin-prompt-lore", Placeholder.unparsed("id", hatId)));
+        return;
+      }
+      if (rawSlot == 15) {
+        if (event.isRightClick()) {
+          setForceDefaultHat(player, null, false);
+        } else {
+          setForceDefaultHat(player, hatId, true);
+        }
+        openHatEditorMenu(player, hatId);
         return;
       }
       if (rawSlot == 16) {
@@ -1193,7 +1306,7 @@ public class TrimGuiManager implements Listener {
             Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", slotIcon),
             Placeholder.unparsed("pattern", chosenPattern.name), Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(chosenPattern.icon)),
             Placeholder.unparsed("material", matOpt.name), Placeholder.parsed("material_icon", plugin.getItemSpriteTag(matOpt.icon))));
-        if (armorSlot == EquipmentSlot.HEAD && getSavedHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
+        if (armorSlot == EquipmentSlot.HEAD && getEffectiveHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
         openSlotMenu(player, armorSlot);
       }
       return;
@@ -1216,7 +1329,7 @@ public class TrimGuiManager implements Listener {
               Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", slotIcon),
               Placeholder.unparsed("pattern", patOpt.name), Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(patOpt.icon)),
               Placeholder.unparsed("material", chosenMaterial.name), Placeholder.parsed("material_icon", plugin.getItemSpriteTag(chosenMaterial.icon))));
-          if (armorSlot == EquipmentSlot.HEAD && getSavedHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
+          if (armorSlot == EquipmentSlot.HEAD && getEffectiveHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
           openSlotMenu(player, armorSlot);
         }
         return;
@@ -1330,7 +1443,7 @@ public class TrimGuiManager implements Listener {
         plugin.getConfig().set("hats.definitions." + editingNameHatId + ".display-name", rawInput);
         plugin.saveConfig();
         for (Player online : Bukkit.getOnlinePlayers()) {
-          if (editingNameHatId.equalsIgnoreCase(getSavedHatId(online))) forceRefreshEquippedHat(online);
+          if (editingNameHatId.equalsIgnoreCase(getEffectiveHatId(online))) forceRefreshEquippedHat(online);
         }
         player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1.3f);
         player.sendMessage(plugin.getMessage("hat-admin-name-updated", Placeholder.unparsed("id", editingNameHatId), Placeholder.component("name", plugin.parse(rawInput))));
@@ -1363,7 +1476,7 @@ public class TrimGuiManager implements Listener {
         plugin.getConfig().set(lorePath, newLore);
         plugin.saveConfig();
         for (Player online : Bukkit.getOnlinePlayers()) {
-          if (editingLoreHatId.equalsIgnoreCase(getSavedHatId(online))) forceRefreshEquippedHat(online);
+          if (editingLoreHatId.equalsIgnoreCase(getEffectiveHatId(online))) forceRefreshEquippedHat(online);
         }
         player.playSound(player.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 1f, 1.2f);
         player.sendMessage(plugin.getMessage("hat-admin-lore-updated", Placeholder.unparsed("id", editingLoreHatId)));
