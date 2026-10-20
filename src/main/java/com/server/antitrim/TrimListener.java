@@ -38,391 +38,317 @@ import java.util.List;
 
 public class TrimListener implements Listener {
 
-    private final AntiArmorTrim plugin;
-    private final TrimGuiManager guiManager;
-    private Method setGameRuleMethod;
+  private final AntiArmorTrim plugin;
+  private final TrimGuiManager guiManager;
+  private Method setGameRuleMethod;
 
-    public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
-        this.plugin = plugin;
-        this.guiManager = guiManager;
+  public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
+    this.plugin = plugin;
+    this.guiManager = guiManager;
 
-        try {
-            for (Method m : World.class.getMethods()) {
-                if (m.getName().equals("setGameRule") && m.getParameterCount() == 2) {
-                    this.setGameRuleMethod = m;
-                    break;
-                }
-            }
-        } catch (Throwable ignored) {
+    try {
+      for (Method m : World.class.getMethods()) {
+        if (m.getName().equals("setGameRule") && m.getParameterCount() == 2) {
+          this.setGameRuleMethod = m;
+          break;
         }
+      }
+    } catch (Throwable ignored) {}
 
-        for (World world : Bukkit.getWorlds()) {
-            lockAlwaysDaytime(world);
+    for (World world : Bukkit.getWorlds()) lockAlwaysDaytime(world);
+
+    Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+      for (World world : Bukkit.getWorlds()) {
+        if (world.getEnvironment() == World.Environment.NORMAL) {
+          if (world.getTime() != 6000L) world.setTime(6000L);
+          if (world.hasStorm()) world.setStorm(false);
+          if (world.isThundering()) world.setThundering(false);
         }
+      }
+    }, 60L, 60L);
+  }
 
-        // Task kiem tra dinh ky moi 60 ticks (3 giay) dam bao World luon o moc 6000L (Giua trua)
-        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            for (World world : Bukkit.getWorlds()) {
-                if (world.getEnvironment() == World.Environment.NORMAL) {
-                    if (world.getTime() != 6000L) {
-                        world.setTime(6000L);
-                    }
-                    if (world.hasStorm()) {
-                        world.setStorm(false);
-                    }
-                    if (world.isThundering()) {
-                        world.setThundering(false);
-                    }
-                }
-            }
-        }, 60L, 60L);
+  public void lockAlwaysDaytime(World world) {
+    if (world == null) return;
+    setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_TIME");
+    setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_WEATHER");
+    setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_TIME");
+    setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_WEATHER");
+    setRuleFalse(world, "org.bukkit.GameRule", "DO_DAYLIGHT_CYCLE");
+    setRuleFalse(world, "org.bukkit.GameRule", "DO_WEATHER_CYCLE");
+
+    world.setTime(6000L);
+    world.setStorm(false);
+    world.setThundering(false);
+    world.setClearWeatherDuration(Integer.MAX_VALUE);
+  }
+
+  private void setRuleFalse(World world, String className, String fieldName) {
+    if (setGameRuleMethod == null) return;
+    try {
+      Class<?> clazz = Class.forName(className);
+      Field field = clazz.getField(fieldName);
+      Object ruleObj = field.get(null);
+      if (ruleObj != null) setGameRuleMethod.invoke(world, ruleObj, Boolean.FALSE);
+    } catch (Throwable ignored) {}
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onWorldLoad(WorldLoadEvent event) { lockAlwaysDaytime(event.getWorld()); }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onTimeSkip(TimeSkipEvent event) {
+    event.setCancelled(true);
+    event.getWorld().setTime(6000L);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onWeatherChange(WeatherChangeEvent event) {
+    if (event.toWeatherState()) event.setCancelled(true);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onThunderChange(ThunderChangeEvent event) {
+    if (event.toThunderState()) event.setCancelled(true);
+  }
+
+  private boolean hasArmorTrim(ItemStack item) {
+    if (item == null || item.getType().isAir()) return false;
+    return item.getItemMeta() instanceof ArmorMeta armorMeta && armorMeta.hasTrim();
+  }
+
+  private void scanAndClean(Player player) {
+    ItemStack cursor = player.getItemOnCursor();
+    if (guiManager.isCustomHatItem(cursor)) player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
+
+    guiManager.applyAllSavedTrims(player);
+
+    if (!guiManager.canUseHat(player)) {
+      ItemStack helmet = player.getInventory().getHelmet();
+      if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
     }
 
-    public void lockAlwaysDaytime(World world) {
-        if (world == null) return;
+    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
 
-        // Tuong thich dong thoi ca 1.21.11 (ADVANCE_TIME / ADVANCE_WEATHER) va 1.21.1 (DO_DAYLIGHT_CYCLE / DO_WEATHER_CYCLE)
-        setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_TIME");
-        setRuleFalse(world, "org.bukkit.GameRules", "ADVANCE_WEATHER");
-        setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_TIME");
-        setRuleFalse(world, "org.bukkit.GameRule", "ADVANCE_WEATHER");
-        setRuleFalse(world, "org.bukkit.GameRule", "DO_DAYLIGHT_CYCLE");
-        setRuleFalse(world, "org.bukkit.GameRule", "DO_WEATHER_CYCLE");
+    boolean removed = false;
+    ItemStack[] contents = player.getInventory().getContents();
+    for (int i = 0; i < contents.length; i++) {
+      if (hasArmorTrim(contents[i])) {
+        player.getInventory().setItem(i, null);
+        removed = true;
+      }
+    }
+    if (removed) player.sendMessage(plugin.getMessage("remove-trim"));
+  }
 
-        world.setTime(6000L);
-        world.setStorm(false);
-        world.setThundering(false);
-        world.setClearWeatherDuration(Integer.MAX_VALUE);
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onArmorChange(PlayerArmorChangeEvent event) {
+    Player player = event.getPlayer();
+    EquipmentSlot slot = switch (event.getSlotType()) {
+      case HEAD -> EquipmentSlot.HEAD;
+      case CHEST -> EquipmentSlot.CHEST;
+      case LEGS -> EquipmentSlot.LEGS;
+      case FEET -> EquipmentSlot.FEET;
+    };
+    Bukkit.getScheduler().runTask(plugin, () -> {
+      if (!player.isOnline()) return;
+      guiManager.applySavedTrimToSlot(player, slot);
+      scanAndClean(player);
+    });
+  }
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onDeath(PlayerDeathEvent event) {
+    List<ItemStack> drops = event.getDrops();
+    for (int i = 0; i < drops.size(); i++) {
+      ItemStack drop = drops.get(i);
+      if (guiManager.isCustomHatItem(drop)) drops.set(i, guiManager.restoreOriginalHelmet(drop));
+    }
+    Player player = event.getPlayer();
+    ItemStack helmet = player.getInventory().getHelmet();
+    if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onRespawn(PlayerRespawnEvent event) {
+    Player player = event.getPlayer();
+    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+      if (!player.isOnline()) return;
+      guiManager.forceRefreshEquippedHat(player);
+      scanAndClean(player);
+    }, 2L);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onTeleport(PlayerTeleportEvent event) {
+    if (event.getFrom().getWorld() != null && event.getTo() != null && event.getTo().getWorld() != null) {
+      if (!event.getFrom().getWorld().equals(event.getTo().getWorld())) {
+        Player player = event.getPlayer();
+        ItemStack helmet = player.getInventory().getHelmet();
+        if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+      }
+    }
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onChangedWorld(PlayerChangedWorldEvent event) {
+    Player player = event.getPlayer();
+    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+      if (!player.isOnline()) return;
+      guiManager.forceRefreshEquippedHat(player);
+      scanAndClean(player);
+    }, 2L);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onDrop(PlayerDropItemEvent event) {
+    ItemStack dropped = event.getItemDrop().getItemStack();
+    if (guiManager.isCustomHatItem(dropped)) event.getItemDrop().setItemStack(guiManager.restoreOriginalHelmet(dropped));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onSwapHand(PlayerSwapHandItemsEvent event) {
+    if (guiManager.isCustomHatItem(event.getOffHandItem())) event.setOffHandItem(guiManager.restoreOriginalHelmet(event.getOffHandItem()));
+    if (guiManager.isCustomHatItem(event.getMainHandItem())) event.setMainHandItem(guiManager.restoreOriginalHelmet(event.getMainHandItem()));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onJoin(PlayerJoinEvent event) {
+    Player player = event.getPlayer();
+    scanAndClean(player);
+    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+      if (!player.isOnline()) return;
+      guiManager.forceRefreshEquippedHat(player);
+      scanAndClean(player);
+    }, 2L);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onQuitRestore(PlayerQuitEvent event) {
+    Player player = event.getPlayer();
+    ItemStack helmet = player.getInventory().getHelmet();
+    if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onOpen(InventoryOpenEvent event) {
+    if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
+    if (event.getPlayer() instanceof Player player) scanAndClean(player);
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onClose(InventoryCloseEvent event) {
+    if (event.getPlayer() instanceof Player player) {
+      ItemStack cursor = player.getItemOnCursor();
+      if (guiManager.isCustomHatItem(cursor)) player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
+      scanAndClean(player);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onClick(InventoryClickEvent event) {
+    if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
+    if (!(event.getWhoClicked() instanceof Player player)) return;
+
+    boolean restoredHat = false;
+    if (guiManager.isCustomHatItem(event.getCurrentItem())) {
+      event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
+      restoredHat = true;
+    }
+    if (guiManager.isCustomHatItem(event.getCursor())) {
+      event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
+      restoredHat = true;
     }
 
-    private void setRuleFalse(World world, String className, String fieldName) {
-        if (setGameRuleMethod == null) return;
-        try {
-            Class<?> clazz = Class.forName(className);
-            Field field = clazz.getField(fieldName);
-            Object ruleObj = field.get(null);
-            if (ruleObj != null) {
-                setGameRuleMethod.invoke(world, ruleObj, Boolean.FALSE);
-            }
-        } catch (Throwable ignored) {
+    if (event.getClick() == ClickType.NUMBER_KEY) {
+      int hotbarBtn = event.getHotbarButton();
+      if (hotbarBtn >= 0) {
+        ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
+        if (guiManager.isCustomHatItem(hotbarItem)) {
+          player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
+          restoredHat = true;
         }
+      }
+    } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
+      ItemStack offhand = player.getInventory().getItemInOffHand();
+      if (guiManager.isCustomHatItem(offhand)) {
+        player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
+        restoredHat = true;
+      }
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onWorldLoad(WorldLoadEvent event) {
-        lockAlwaysDaytime(event.getWorld());
+    if (restoredHat) {
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (player.isOnline()) scanAndClean(player);
+      });
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onTimeSkip(TimeSkipEvent event) {
+    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+
+    boolean triggered = false;
+    if (hasArmorTrim(event.getCurrentItem())) {
+      event.setCurrentItem(null);
+      event.setCancelled(true);
+      triggered = true;
+    }
+    if (hasArmorTrim(event.getCursor())) {
+      event.getView().setCursor(null);
+      event.setCancelled(true);
+      triggered = true;
+    }
+    if (event.getClick() == ClickType.NUMBER_KEY) {
+      int hotbarBtn = event.getHotbarButton();
+      if (hotbarBtn >= 0 && hasArmorTrim(player.getInventory().getItem(hotbarBtn))) {
+        player.getInventory().setItem(hotbarBtn, null);
         event.setCancelled(true);
-        event.getWorld().setTime(6000L);
+        triggered = true;
+      }
     }
+    if (triggered) player.sendMessage(plugin.getMessage("remove-trim"));
+  }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onWeatherChange(WeatherChangeEvent event) {
-        if (event.toWeatherState()) {
-            event.setCancelled(true);
-        }
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onInteract(PlayerInteractEvent event) {
+    Player player = event.getPlayer();
+    ItemStack item = event.getItem();
+    if (guiManager.isCustomHatItem(item) && event.getHand() != null) {
+      item = guiManager.restoreOriginalHelmet(item);
+      player.getInventory().setItem(event.getHand(), item);
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onThunderChange(ThunderChangeEvent event) {
-        if (event.toThunderState()) {
-            event.setCancelled(true);
-        }
+    if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+    if (hasArmorTrim(item)) {
+      event.setCancelled(true);
+      if (event.getHand() != null) player.getInventory().setItem(event.getHand(), null);
+      player.sendMessage(plugin.getMessage("remove-trim"));
     }
+  }
 
-    private boolean hasArmorTrim(ItemStack item) {
-        if (item == null || item.getType().isAir()) return false;
-        ItemMeta meta = item.getItemMeta();
-        if (meta instanceof ArmorMeta armorMeta) {
-            return armorMeta.hasTrim();
-        }
-        return false;
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onPickup(EntityPickupItemEvent event) {
+    if (event.getEntity() instanceof Player player) {
+      ItemStack picked = event.getItem().getItemStack();
+      if (guiManager.isCustomHatItem(picked)) {
+        picked = guiManager.restoreOriginalHelmet(picked);
+        event.getItem().setItemStack(picked);
+      }
+      if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+      if (hasArmorTrim(picked)) {
+        event.setCancelled(true);
+        event.getItem().remove();
+        player.sendMessage(plugin.getMessage("remove-trim"));
+      }
     }
+  }
 
-    private void scanAndClean(Player player) {
-        ItemStack cursor = player.getItemOnCursor();
-        if (guiManager.isCustomHatItem(cursor)) {
-            player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
-        }
-
-        guiManager.applyAllSavedTrims(player);
-
-        if (!guiManager.canUseHat(player)) {
-            ItemStack helmet = player.getInventory().getHelmet();
-            if (guiManager.isCustomHatItem(helmet)) {
-                player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
-            }
-        }
-
-        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
-
-        boolean removed = false;
-        ItemStack[] contents = player.getInventory().getContents();
-
-        for (int i = 0; i < contents.length; i++) {
-            ItemStack item = contents[i];
-            if (hasArmorTrim(item)) {
-                player.getInventory().setItem(i, null);
-                removed = true;
-            }
-        }
-
-        if (removed) {
-            player.sendMessage(plugin.getMessage("remove-trim"));
-        }
+  @EventHandler(priority = EventPriority.HIGHEST)
+  public void onSmith(PrepareSmithingEvent event) {
+    if (event.getView().getPlayer() instanceof Player player) {
+      if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
+      if (hasArmorTrim(event.getResult())) {
+        event.setResult(null);
+        player.sendActionBar(plugin.getRawMessage("deny-smith"));
+        player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1f);
+      }
     }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onArmorChange(PlayerArmorChangeEvent event) {
-        Player player = event.getPlayer();
-        EquipmentSlot slot = switch (event.getSlotType()) {
-            case HEAD -> EquipmentSlot.HEAD;
-            case CHEST -> EquipmentSlot.CHEST;
-            case LEGS -> EquipmentSlot.LEGS;
-            case FEET -> EquipmentSlot.FEET;
-        };
-
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (!player.isOnline()) return;
-            guiManager.applySavedTrimToSlot(player, slot);
-            scanAndClean(player);
-        });
-    }
-
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onDeath(PlayerDeathEvent event) {
-        List<ItemStack> drops = event.getDrops();
-        for (int i = 0; i < drops.size(); i++) {
-            ItemStack drop = drops.get(i);
-            if (guiManager.isCustomHatItem(drop)) {
-                drops.set(i, guiManager.restoreOriginalHelmet(drop));
-            }
-        }
-
-        Player player = event.getPlayer();
-        ItemStack helmet = player.getInventory().getHelmet();
-        if (guiManager.isCustomHatItem(helmet)) {
-            player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onRespawn(PlayerRespawnEvent event) {
-        Player player = event.getPlayer();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) return;
-            guiManager.forceRefreshEquippedHat(player);
-            scanAndClean(player);
-        }, 2L);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onTeleport(PlayerTeleportEvent event) {
-        if (event.getFrom().getWorld() != null && event.getTo() != null && event.getTo().getWorld() != null) {
-            if (!event.getFrom().getWorld().equals(event.getTo().getWorld())) {
-                Player player = event.getPlayer();
-                ItemStack helmet = player.getInventory().getHelmet();
-                if (guiManager.isCustomHatItem(helmet)) {
-                    player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
-                }
-            }
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onChangedWorld(PlayerChangedWorldEvent event) {
-        Player player = event.getPlayer();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) return;
-            guiManager.forceRefreshEquippedHat(player);
-            scanAndClean(player);
-        }, 2L);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onDrop(PlayerDropItemEvent event) {
-        ItemStack dropped = event.getItemDrop().getItemStack();
-        if (guiManager.isCustomHatItem(dropped)) {
-            event.getItemDrop().setItemStack(guiManager.restoreOriginalHelmet(dropped));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onSwapHand(PlayerSwapHandItemsEvent event) {
-        if (guiManager.isCustomHatItem(event.getOffHandItem())) {
-            event.setOffHandItem(guiManager.restoreOriginalHelmet(event.getOffHandItem()));
-        }
-        if (guiManager.isCustomHatItem(event.getMainHandItem())) {
-            event.setMainHandItem(guiManager.restoreOriginalHelmet(event.getMainHandItem()));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onJoin(PlayerJoinEvent event) {
-        Player player = event.getPlayer();
-        scanAndClean(player);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (!player.isOnline()) return;
-            guiManager.forceRefreshEquippedHat(player);
-            scanAndClean(player);
-        }, 2L);
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onQuitRestore(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-        ItemStack helmet = player.getInventory().getHelmet();
-        if (guiManager.isCustomHatItem(helmet)) {
-            player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onOpen(InventoryOpenEvent event) {
-        if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
-        if (event.getPlayer() instanceof Player player) {
-            scanAndClean(player);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onClose(InventoryCloseEvent event) {
-        if (event.getPlayer() instanceof Player player) {
-            ItemStack cursor = player.getItemOnCursor();
-            if (guiManager.isCustomHatItem(cursor)) {
-                player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
-            }
-            scanAndClean(player);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onClick(InventoryClickEvent event) {
-        if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
-        if (!(event.getWhoClicked() instanceof Player player)) return;
-
-        boolean restoredHat = false;
-        if (guiManager.isCustomHatItem(event.getCurrentItem())) {
-            event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
-            restoredHat = true;
-        }
-        if (guiManager.isCustomHatItem(event.getCursor())) {
-            event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
-            restoredHat = true;
-        }
-
-        if (event.getClick() == ClickType.NUMBER_KEY) {
-            int hotbarBtn = event.getHotbarButton();
-            if (hotbarBtn >= 0) {
-                ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
-                if (guiManager.isCustomHatItem(hotbarItem)) {
-                    player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
-                    restoredHat = true;
-                }
-            }
-        } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
-            ItemStack offhand = player.getInventory().getItemInOffHand();
-            if (guiManager.isCustomHatItem(offhand)) {
-                player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
-                restoredHat = true;
-            }
-        }
-
-        if (restoredHat) {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (player.isOnline()) {
-                    scanAndClean(player);
-                }
-            });
-        }
-
-        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
-
-        boolean triggered = false;
-
-        if (hasArmorTrim(event.getCurrentItem())) {
-            event.setCurrentItem(null);
-            event.setCancelled(true);
-            triggered = true;
-        }
-
-        if (hasArmorTrim(event.getCursor())) {
-            event.getView().setCursor(null);
-            event.setCancelled(true);
-            triggered = true;
-        }
-
-        if (event.getClick() == ClickType.NUMBER_KEY) {
-            int hotbarBtn = event.getHotbarButton();
-            if (hotbarBtn >= 0) {
-                ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
-                if (hasArmorTrim(hotbarItem)) {
-                    player.getInventory().setItem(hotbarBtn, null);
-                    event.setCancelled(true);
-                    triggered = true;
-                }
-            }
-        }
-
-        if (triggered) {
-            player.sendMessage(plugin.getMessage("remove-trim"));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onInteract(PlayerInteractEvent event) {
-        Player player = event.getPlayer();
-        ItemStack item = event.getItem();
-
-        if (guiManager.isCustomHatItem(item) && event.getHand() != null) {
-            item = guiManager.restoreOriginalHelmet(item);
-            player.getInventory().setItem(event.getHand(), item);
-        }
-
-        if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
-
-        if (hasArmorTrim(item)) {
-            event.setCancelled(true);
-            if (event.getHand() != null) {
-                player.getInventory().setItem(event.getHand(), null);
-            }
-            player.sendMessage(plugin.getMessage("remove-trim"));
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onPickup(EntityPickupItemEvent event) {
-        if (event.getEntity() instanceof Player player) {
-            ItemStack picked = event.getItem().getItemStack();
-            if (guiManager.isCustomHatItem(picked)) {
-                picked = guiManager.restoreOriginalHelmet(picked);
-                event.getItem().setItemStack(picked);
-            }
-
-            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
-
-            if (hasArmorTrim(picked)) {
-                event.setCancelled(true);
-                event.getItem().remove();
-                player.sendMessage(plugin.getMessage("remove-trim"));
-            }
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
-    public void onSmith(PrepareSmithingEvent event) {
-        if (event.getView().getPlayer() instanceof Player player) {
-            if (player.hasPermission(AntiArmorTrim.BYPASS_PERM)) return;
-
-            ItemStack result = event.getResult();
-            if (hasArmorTrim(result)) {
-                event.setResult(null);
-                player.sendActionBar(plugin.getRawMessage("deny-smith"));
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1f);
-            }
-        }
-    }
+  }
 }
