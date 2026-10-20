@@ -21,6 +21,8 @@ gui:
     - "<base_icon> <#a6adc8>Base Armor: <base_name>"
 
 hats:
+  force-default-hat: false
+  default-hat: ""
   items: []
   definitions: {}
 
@@ -51,6 +53,9 @@ messages:
   hat-admin-name-reset: "<#cdd6f4>Reset display name for <#89dceb><id><#cdd6f4>."
   hat-admin-lore-updated: "<#a6e3a1>Updated lore for <#89dceb><id><#a6e3a1>."
   hat-admin-lore-reset: "<#cdd6f4>Cleared custom lore for <#89dceb><id><#cdd6f4>."
+  hat-admin-default-set: "<#a6e3a1>Set forced default hat to <#89dceb><id><#a6e3a1>."
+  hat-admin-default-cleared: "<#fab387>Disabled forced default hat."
+  hat-admin-default-toggled: "<#cdd6f4>Force Default Hat is now <state><#cdd6f4>."
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
   rename-cancelled: "<#a6adc8>Item rename cancelled."
   rename-no-item: "<#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
@@ -60,4 +65,4 @@ messages:
   reload-success: "<#a6e3a1>Configuration reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | default <id|off>"
