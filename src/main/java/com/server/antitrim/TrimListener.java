@@ -78,14 +78,31 @@ public class TrimListener implements Listener {
 
   @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
   public void onCommandPreprocess(PlayerCommandPreprocessEvent event) {
+    Player player = event.getPlayer();
     String msg = event.getMessage().trim();
     String lower = msg.toLowerCase();
+
     if (lower.equals("/hat") || lower.startsWith("/hat ") || lower.equals("/hats") || lower.startsWith("/hats ")
         || lower.equals("/customhat") || lower.startsWith("/customhat ")) {
       event.setCancelled(true);
       String[] parts = msg.split("\\s+");
       String[] args = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
-      plugin.handleHatCommand(event.getPlayer(), args);
+      plugin.handleHatCommand(player, args);
+      return;
+    }
+
+    // Khoi phuc mu Kim Cuong / Netherite that NGAY LAP TUC truoc khi PerPlayerKit / Kit plugin xu ly lenh
+    String cmdToken = lower.split("\\s+")[0];
+    if (cmdToken.contains(":")) cmdToken = "/" + cmdToken.substring(cmdToken.indexOf(':') + 1);
+    if (cmdToken.startsWith("/kit") || cmdToken.equals("/k") || cmdToken.matches("/k[1-9]")
+        || cmdToken.startsWith("/savepublickit") || cmdToken.startsWith("/spk") || cmdToken.startsWith("/publickit")
+        || cmdToken.startsWith("/pk") || cmdToken.startsWith("/regear") || cmdToken.equals("/rg")
+        || cmdToken.startsWith("/kitroom") || cmdToken.equals("/kr") || cmdToken.startsWith("/premades")
+        || cmdToken.startsWith("/repair") || cmdToken.startsWith("/perplayerkit")) {
+      guiManager.restoreAllCustomHatsInInventory(player);
+      Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        if (player.isOnline()) scanAndClean(player);
+      }, 2L);
     }
   }
 
@@ -140,7 +157,7 @@ public class TrimListener implements Listener {
 
     guiManager.applyAllSavedTrims(player);
 
-    if (guiManager.getEffectiveHatId(player) == null) {
+    if (guiManager.getEffectiveHatId(player) == null || guiManager.isExternalGuiOpen(player)) {
       ItemStack helmet = player.getInventory().getHelmet();
       if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
     }
@@ -182,8 +199,7 @@ public class TrimListener implements Listener {
       if (guiManager.isCustomHatItem(drop)) drops.set(i, guiManager.restoreOriginalHelmet(drop));
     }
     Player player = event.getPlayer();
-    ItemStack helmet = player.getInventory().getHelmet();
-    if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+    guiManager.restoreAllCustomHatsInInventory(player);
   }
 
   @EventHandler(priority = EventPriority.HIGHEST)
@@ -200,9 +216,7 @@ public class TrimListener implements Listener {
   public void onTeleport(PlayerTeleportEvent event) {
     if (event.getFrom().getWorld() != null && event.getTo() != null && event.getTo().getWorld() != null) {
       if (!event.getFrom().getWorld().equals(event.getTo().getWorld())) {
-        Player player = event.getPlayer();
-        ItemStack helmet = player.getInventory().getHelmet();
-        if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+        guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
       }
     }
   }
@@ -240,25 +254,57 @@ public class TrimListener implements Listener {
     }, 2L);
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST)
+  @EventHandler(priority = EventPriority.LOWEST)
   public void onQuitRestore(PlayerQuitEvent event) {
-    Player player = event.getPlayer();
-    ItemStack helmet = player.getInventory().getHelmet();
-    if (guiManager.isCustomHatItem(helmet)) player.getInventory().setHelmet(guiManager.restoreOriginalHelmet(helmet));
+    guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST)
-  public void onOpen(InventoryOpenEvent event) {
+  // Chay o LOWEST de tra ve mu Kim Cuong / Netherite that TRUOC KHI PerPlayerKit doc kho do khi mo GUI
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onOpenLowest(InventoryOpenEvent event) {
     if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
-    if (event.getPlayer() instanceof Player player) scanAndClean(player);
+    if (event.getPlayer() instanceof Player player) {
+      guiManager.restoreAllCustomHatsInInventory(player);
+    }
   }
 
-  @EventHandler(priority = EventPriority.HIGHEST)
-  public void onClose(InventoryCloseEvent event) {
+  // Chay o LOWEST de khi nguoi choi bam nut Save Kit / Import Inventory trong GUI cua PerPlayerKit, mu tren dau luon la mu that
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onClickLowest(InventoryClickEvent event) {
+    if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
+    if (!(event.getWhoClicked() instanceof Player player)) return;
+
+    if (guiManager.isCustomHatItem(event.getCurrentItem())) {
+      event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
+    }
+    if (guiManager.isCustomHatItem(event.getCursor())) {
+      event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
+    }
+    if (event.getClick() == ClickType.NUMBER_KEY) {
+      int hotbarBtn = event.getHotbarButton();
+      if (hotbarBtn >= 0) {
+        ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
+        if (guiManager.isCustomHatItem(hotbarItem)) {
+          player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
+        }
+      }
+    } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
+      ItemStack offhand = player.getInventory().getItemInOffHand();
+      if (guiManager.isCustomHatItem(offhand)) {
+        player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
+      }
+    }
+    guiManager.restoreAllCustomHatsInInventory(player);
+  }
+
+  // Chay o LOWEST khi dong GUI (truoc khi PerPlayerKit luu Kit khi dong menu), sau do 2 ticks tu dong doi lai Nexo Hat
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onCloseLowest(InventoryCloseEvent event) {
     if (event.getPlayer() instanceof Player player) {
-      ItemStack cursor = player.getItemOnCursor();
-      if (guiManager.isCustomHatItem(cursor)) player.setItemOnCursor(guiManager.restoreOriginalHelmet(cursor));
-      scanAndClean(player);
+      guiManager.restoreAllCustomHatsInInventory(player);
+      Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        if (player.isOnline()) scanAndClean(player);
+      }, 2L);
     }
   }
 
@@ -267,38 +313,9 @@ public class TrimListener implements Listener {
     if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
     if (!(event.getWhoClicked() instanceof Player player)) return;
 
-    boolean restoredHat = false;
-    if (guiManager.isCustomHatItem(event.getCurrentItem())) {
-      event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
-      restoredHat = true;
-    }
-    if (guiManager.isCustomHatItem(event.getCursor())) {
-      event.getView().setCursor(guiManager.restoreOriginalHelmet(event.getCursor()));
-      restoredHat = true;
-    }
-
-    if (event.getClick() == ClickType.NUMBER_KEY) {
-      int hotbarBtn = event.getHotbarButton();
-      if (hotbarBtn >= 0) {
-        ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
-        if (guiManager.isCustomHatItem(hotbarItem)) {
-          player.getInventory().setItem(hotbarBtn, guiManager.restoreOriginalHelmet(hotbarItem));
-          restoredHat = true;
-        }
-      }
-    } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
-      ItemStack offhand = player.getInventory().getItemInOffHand();
-      if (guiManager.isCustomHatItem(offhand)) {
-        player.getInventory().setItemInOffHand(guiManager.restoreOriginalHelmet(offhand));
-        restoredHat = true;
-      }
-    }
-
-    if (restoredHat) {
-      Bukkit.getScheduler().runTask(plugin, () -> {
-        if (player.isOnline()) scanAndClean(player);
-      });
-    }
+    Bukkit.getScheduler().runTask(plugin, () -> {
+      if (player.isOnline()) scanAndClean(player);
+    });
 
     if (guiManager.canUseBypass(player)) return;
 
