@@ -12,6 +12,7 @@ import net.luckperms.api.model.group.Group;
 import net.luckperms.api.node.Node;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -19,12 +20,14 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -47,7 +50,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private static final Pattern HEX_LEGACY_PATTERN = Pattern.compile("(?i)[&§]#([A-Fa-f0-9]{6})");
   private static final Pattern LEGACY_CODE_PATTERN = Pattern.compile("(?i)[&§]([0-9a-fk-or])");
 
+  private Class<?> nexoItemsClass;
   private Method nexoItemFromIdMethod;
+  private Method nexoItemNamesMethod;
   private Method nexoBuilderBuildMethod;
 
   @Override
@@ -90,23 +95,51 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public static AntiArmorTrim getInstance() { return instance; }
   public TrimGuiManager getGuiManager() { return guiManager; }
 
+  private boolean initNexoReflection() {
+    Plugin nexo = Bukkit.getPluginManager().getPlugin("Nexo");
+    if (nexo == null || !nexo.isEnabled()) return false;
+    try {
+      if (nexoItemsClass == null) {
+        ClassLoader nexoLoader = nexo.getClass().getClassLoader();
+        nexoItemsClass = Class.forName("com.nexomc.nexo.api.NexoItems", true, nexoLoader);
+        nexoItemFromIdMethod = nexoItemsClass.getMethod("itemFromId", String.class);
+        try {
+          nexoItemNamesMethod = nexoItemsClass.getMethod("itemNames");
+        } catch (Throwable ignored) {}
+      }
+      return true;
+    } catch (Throwable ignored) {
+      return false;
+    }
+  }
+
   @Nullable
   public ItemStack getNexoItem(String itemId) {
-    if (itemId == null || itemId.isBlank() || !Bukkit.getPluginManager().isPluginEnabled("Nexo")) return null;
+    if (itemId == null || itemId.isBlank() || !initNexoReflection()) return null;
     try {
-      if (nexoItemFromIdMethod == null) {
-        Class<?> nexoItemsClass = Class.forName("com.nexomc.nexo.api.NexoItems");
-        nexoItemFromIdMethod = nexoItemsClass.getMethod("itemFromId", String.class);
-      }
       Object itemBuilder = nexoItemFromIdMethod.invoke(null, itemId.trim());
       if (itemBuilder == null) return null;
       if (nexoBuilderBuildMethod == null) {
         nexoBuilderBuildMethod = itemBuilder.getClass().getMethod("build");
+        nexoBuilderBuildMethod.setAccessible(true);
       }
       Object built = nexoBuilderBuildMethod.invoke(itemBuilder);
       if (built instanceof ItemStack stack) return stack.clone();
     } catch (Throwable ignored) {}
     return null;
+  }
+
+  public List<String> getAllNexoItemIds() {
+    if (!initNexoReflection() || nexoItemNamesMethod == null) return Collections.emptyList();
+    try {
+      Object res = nexoItemNamesMethod.invoke(null);
+      if (res instanceof Collection<?> col) {
+        List<String> list = new ArrayList<>(col.size());
+        for (Object o : col) if (o != null) list.add(o.toString());
+        return list;
+      }
+    } catch (Throwable ignored) {}
+    return Collections.emptyList();
   }
 
   public String getItemSpriteTag(Material material) {
@@ -203,6 +236,62 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return finalSb.toString();
   }
 
+  public void handleHatCommand(Player p, String[] args) {
+    if (args.length == 0) {
+      guiManager.openHatMenu(p);
+      return;
+    }
+    String sub = args[0].toLowerCase();
+    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove") || sub.equals("delete")) {
+      if (!p.hasPermission(ADMIN_PERM)) {
+        p.sendMessage(getMessage("no-permission"));
+        return;
+      }
+      if (sub.equals("admin")) {
+        if (args.length == 1) {
+          guiManager.openHatAdminMenu(p);
+          return;
+        }
+        sub = args[1].toLowerCase();
+        args = java.util.Arrays.copyOfRange(args, 1, args.length);
+      }
+      if (sub.equals("add") && args.length >= 2) {
+        String rawId = args[1].trim();
+        List<String> hats = new ArrayList<>(getConfig().getStringList("hats.items"));
+        if (hats.stream().anyMatch(h -> h.equalsIgnoreCase(rawId))) {
+          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
+          guiManager.openHatEditorMenu(p, rawId);
+          return;
+        }
+        hats.add(rawId);
+        getConfig().set("hats.items", hats);
+        saveConfig();
+        if (getNexoItem(rawId) != null) {
+          p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+          p.sendMessage(getMessage("hat-admin-added", Placeholder.unparsed("id", rawId)));
+          guiManager.openHatEditorMenu(p, rawId);
+        } else {
+          p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
+          p.sendMessage(getMessage("hat-admin-added-invalid", Placeholder.unparsed("id", rawId)));
+          guiManager.openHatAdminMenu(p);
+        }
+        return;
+      }
+      if (sub.equals("edit") && args.length >= 2) {
+        guiManager.openHatEditorMenu(p, args[1].trim());
+        return;
+      }
+      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
+        guiManager.deleteHatByCommand(p, args[1].trim());
+        return;
+      }
+      guiManager.openHatAdminMenu(p);
+      return;
+    }
+    guiManager.openHatMenu(p);
+  }
+
   @Override
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
     String cmdName = command.getName().toLowerCase();
@@ -218,12 +307,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
     if (cmdName.equals("hat")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      if (args.length > 0 && args[0].equalsIgnoreCase("admin")) {
-        if (!p.hasPermission(ADMIN_PERM)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openHatAdminMenu(p);
-        return true;
-      }
-      guiManager.openHatMenu(p);
+      handleHatCommand(p, args);
       return true;
     }
     if (cmdName.equals("rename")) {
@@ -246,7 +330,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         sender.sendMessage(getMessage("reload-success"));
         return true;
       }
-      if (args[0].equalsIgnoreCase("hats") && sender instanceof Player p) {
+      if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
         if (!p.hasPermission(ADMIN_PERM)) { p.sendMessage(getMessage("no-permission")); return true; }
         guiManager.openHatAdminMenu(p);
         return true;
@@ -258,11 +342,38 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   @Override
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-    if (command.getName().equalsIgnoreCase("antitrim") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
-      return List.of("reload", "hats");
+    String cmd = command.getName().toLowerCase();
+    if (cmd.equals("antitrim") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
+      return List.of("reload", "hats", "admin");
     }
-    if (command.getName().equalsIgnoreCase("hat") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
-      return Collections.singletonList("admin");
+    if (cmd.equals("hat") && sender.hasPermission(ADMIN_PERM)) {
+      if (args.length == 1) {
+        String prefix = args[0].toLowerCase();
+        return List.of("admin", "add", "edit", "remove").stream().filter(s -> s.startsWith(prefix)).toList();
+      }
+      if (args.length == 2) {
+        String sub = args[0].toLowerCase();
+        String prefix = args[1].toLowerCase();
+        if (sub.equals("admin")) {
+          return List.of("add", "edit", "remove").stream().filter(s -> s.startsWith(prefix)).toList();
+        }
+        if (sub.equals("add")) {
+          return getAllNexoItemIds().stream().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        }
+        if (sub.equals("edit") || sub.equals("remove")) {
+          return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+        }
+      }
+      if (args.length == 3 && args[0].equalsIgnoreCase("admin")) {
+        String sub = args[1].toLowerCase();
+        String prefix = args[2].toLowerCase();
+        if (sub.equals("add")) {
+          return getAllNexoItemIds().stream().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        }
+        if (sub.equals("edit") || sub.equals("remove")) {
+          return getConfig().getStringList("hats.items").stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+        }
+      }
     }
     return Collections.emptyList();
   }
