@@ -17,6 +17,7 @@ import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -31,6 +32,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -68,6 +70,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     registerCmd("trim");
     registerCmd("hat");
     registerCmd("rename");
+    Bukkit.getScheduler().runTaskLater(this, this::forceTakeoverCommands, 20L);
     getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + Nexo Hat Replacer) enabled!");
   }
 
@@ -77,6 +80,29 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       cmd.setExecutor(this);
       cmd.setTabCompleter(this);
     }
+  }
+
+  public void forceTakeoverCommands() {
+    try {
+      Map<String, Command> knownCommands = Bukkit.getCommandMap().getKnownCommands();
+      String[] cmds = {"antitrim", "decor", "trim", "hat", "rename"};
+      for (String name : cmds) {
+        PluginCommand pc = getCommand(name);
+        if (pc != null) {
+          knownCommands.put(name, pc);
+          for (String alias : pc.getAliases()) {
+            knownCommands.put(alias.toLowerCase(), pc);
+          }
+        }
+      }
+      Method syncMethod = Bukkit.getServer().getClass().getMethod("syncCommands");
+      syncMethod.setAccessible(true);
+      syncMethod.invoke(Bukkit.getServer());
+    } catch (Throwable ignored) {}
+  }
+
+  public boolean hasAdminPerm(CommandSender sender) {
+    return sender.isOp() || sender.hasPermission(ADMIN_PERM) || sender.hasPermission("armortrim.*") || sender.hasPermission("*");
   }
 
   @Override
@@ -118,6 +144,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     if (itemId == null || itemId.isBlank() || !initNexoReflection()) return null;
     try {
       Object itemBuilder = nexoItemFromIdMethod.invoke(null, itemId.trim());
+      if (itemBuilder == null) {
+        itemBuilder = nexoItemFromIdMethod.invoke(null, itemId.trim().toLowerCase());
+      }
       if (itemBuilder == null) return null;
       if (nexoBuilderBuildMethod == null) {
         nexoBuilderBuildMethod = itemBuilder.getClass().getMethod("build");
@@ -243,7 +272,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
     String sub = args[0].toLowerCase();
     if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove") || sub.equals("delete")) {
-      if (!p.hasPermission(ADMIN_PERM)) {
+      if (!hasAdminPerm(p)) {
         p.sendMessage(getMessage("no-permission"));
         return;
       }
@@ -318,8 +347,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
     if (args.length > 0) {
       if (args[0].equalsIgnoreCase("reload")) {
-        if (!sender.hasPermission(ADMIN_PERM)) { sender.sendMessage(getMessage("no-permission")); return true; }
+        if (!hasAdminPerm(sender)) { sender.sendMessage(getMessage("no-permission")); return true; }
         reloadConfig();
+        forceTakeoverCommands();
         if (trimListener != null) {
           for (World world : Bukkit.getWorlds()) trimListener.lockAlwaysDaytime(world);
         }
@@ -331,7 +361,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         return true;
       }
       if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
-        if (!p.hasPermission(ADMIN_PERM)) { p.sendMessage(getMessage("no-permission")); return true; }
+        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
         guiManager.openHatAdminMenu(p);
         return true;
       }
@@ -343,10 +373,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   @Override
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
     String cmd = command.getName().toLowerCase();
-    if (cmd.equals("antitrim") && args.length == 1 && sender.hasPermission(ADMIN_PERM)) {
+    if (cmd.equals("antitrim") && args.length == 1 && hasAdminPerm(sender)) {
       return List.of("reload", "hats", "admin");
     }
-    if (cmd.equals("hat") && sender.hasPermission(ADMIN_PERM)) {
+    if (cmd.equals("hat") && hasAdminPerm(sender)) {
       if (args.length == 1) {
         String prefix = args[0].toLowerCase();
         return List.of("admin", "add", "edit", "remove").stream().filter(s -> s.startsWith(prefix)).toList();
