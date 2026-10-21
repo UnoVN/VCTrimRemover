@@ -256,7 +256,6 @@ public class TrimListener implements Listener {
     guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
   }
 
-  // Chi tra ve mu that khi mo GUI ngoai (nhu PerPlayerKit /kit), KHONG dong vao khi bam E mo kho do ca nhan
   @EventHandler(priority = EventPriority.LOWEST)
   public void onOpenLowest(InventoryOpenEvent event) {
     if (!guiManager.isExternalGui(event.getInventory())) return;
@@ -270,13 +269,11 @@ public class TrimListener implements Listener {
     if (event.getInventory().getHolder() instanceof TrimGuiManager.TrimMenuHolder) return;
     if (!(event.getWhoClicked() instanceof Player player)) return;
 
-    // Neu dang o trong GUI ngoai (nhu PerPlayerKit), luon giu mu that de Save Kit
     if (guiManager.isExternalGui(event.getInventory())) {
       guiManager.restoreAllCustomHatsInInventory(player);
       return;
     }
 
-    // Neu dang o trong kho do ca nhan (E), CHI khoi phuc mu that khi nguoi choi click TRUC TIEP vao mu
     boolean clickedHat = false;
     if (guiManager.isCustomHatItem(event.getCurrentItem())) {
       event.setCurrentItem(guiManager.restoreOriginalHelmet(event.getCurrentItem()));
@@ -310,7 +307,6 @@ public class TrimListener implements Listener {
     }
   }
 
-  // Khi dong kho do ca nhan (E): KHONG thao mu tren dau ra, chi quet nhe de tranh flicker
   @EventHandler(priority = EventPriority.LOWEST)
   public void onCloseLowest(InventoryCloseEvent event) {
     if (!(event.getPlayer() instanceof Player player)) return;
