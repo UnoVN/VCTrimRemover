@@ -56,6 +56,7 @@ public class TrimGuiManager implements Listener {
   private final AntiArmorTrim plugin;
   private final Set<UUID> pendingRenamePlayers = ConcurrentHashMap.newKeySet();
   private final Set<UUID> pendingAddHatPlayers = ConcurrentHashMap.newKeySet();
+  private final Set<UUID> pendingCreateGroupPlayers = ConcurrentHashMap.newKeySet();
   private final Map<UUID, String> pendingHatNameEdit = new ConcurrentHashMap<>();
   private final Map<UUID, String> pendingHatLoreEdit = new ConcurrentHashMap<>();
 
@@ -76,7 +77,7 @@ public class TrimGuiManager implements Listener {
   private static final NamespacedKey KNOCKBACK_MODIFIER_KEY = new NamespacedKey("antitrim", "helmet_knockback");
 
   public enum MenuType {
-    DECOR_HUB, TRIM_MAIN, TRIM_SLOT, HAT_STUDIO, HAT_ADMIN, HAT_EDITOR, RENAME_STUDIO
+    DECOR_HUB, TRIM_MAIN, TRIM_SLOT, HAT_STUDIO, HAT_ADMIN, HAT_EDITOR, HAT_GROUP_LIST, HAT_GROUP_SELECTOR, RENAME_STUDIO
   }
 
   static {
@@ -173,7 +174,59 @@ public class TrimGuiManager implements Listener {
 
   public boolean canUseBypass(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.BYPASS_PERM) || plugin.hasAdminPerm(p); }
   public boolean canUseRename(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.RENAME_PERM) || canUseBypass(p); }
-  public boolean canUseHat(Player p) { return p.isOp() || p.hasPermission(AntiArmorTrim.HAT_PERM) || canUseBypass(p); }
+
+  public List<String> getGroupsContainingHat(String hatId) {
+    List<String> groups = new ArrayList<>();
+    for (Map.Entry<String, Set<String>> entry : plugin.getDbPermGroups().entrySet()) {
+      if (entry.getValue().stream().anyMatch(h -> h.equalsIgnoreCase(hatId))) {
+        groups.add(entry.getKey());
+      }
+    }
+    return groups;
+  }
+
+  public String getHatRequiredPermissionNode(String hatId) {
+    List<String> groups = getGroupsContainingHat(hatId);
+    if (!groups.isEmpty()) return groups.get(0);
+    return AntiArmorTrim.HAT_PERM;
+  }
+
+  // Kiem tra nguoi choi co so huu / co quyen su dung mu hatId cu the hay khong
+  public boolean canUseSpecificHat(Player player, String hatId) {
+    if (hatId == null || hatId.isBlank()) return false;
+    if (player.isOp() || plugin.hasAdminPerm(player) || player.hasPermission("armortrim.hat.*")) {
+      return true;
+    }
+    String cleanId = hatId.trim();
+    if (player.hasPermission("armortrim.hat." + cleanId.toLowerCase())) {
+      return true;
+    }
+
+    List<String> assignedGroups = getGroupsContainingHat(cleanId);
+    if (!assignedGroups.isEmpty()) {
+      for (String permNode : assignedGroups) {
+        if (player.hasPermission(permNode)) return true;
+      }
+      return false;
+    }
+
+    return player.hasPermission(AntiArmorTrim.HAT_PERM);
+  }
+
+  public List<String> getUnlockedHatIds(Player player) {
+    List<String> unlocked = new ArrayList<>();
+    for (String hatId : plugin.getDbHatItems()) {
+      if (canUseSpecificHat(player, hatId) && plugin.getNexoItem(hatId) != null) {
+        unlocked.add(hatId);
+      }
+    }
+    return unlocked;
+  }
+
+  public boolean canUseHat(Player p) {
+    return p.isOp() || plugin.hasAdminPerm(p) || p.hasPermission(AntiArmorTrim.HAT_PERM)
+        || p.hasPermission("armortrim.hat.*") || !getUnlockedHatIds(p).isEmpty();
+  }
 
   public boolean isForceDefaultHat() {
     return plugin.isDbForceDefaultHat();
@@ -187,7 +240,7 @@ public class TrimGuiManager implements Listener {
   @Nullable
   public String getEffectiveHatId(Player player) {
     String saved = getSavedHatId(player);
-    if (canUseHat(player) && saved != null && !saved.isBlank() && plugin.getNexoItem(saved) != null) {
+    if (saved != null && !saved.isBlank() && canUseSpecificHat(player, saved) && plugin.getNexoItem(saved) != null) {
       return saved;
     }
     String defHat = getDefaultHatId();
@@ -561,7 +614,6 @@ public class TrimGuiManager implements Listener {
     applySavedTrimToSlot(player, EquipmentSlot.FEET);
   }
 
-  // Cap nhat mu truc tiep trong 1 lenh setHelmet duy nhat de khong bao gio bi flicker
   public void forceRefreshEquippedHat(Player player) {
     if (isExternalGuiOpen(player)) return;
     ItemStack headItem = player.getInventory().getHelmet();
@@ -585,7 +637,7 @@ public class TrimGuiManager implements Listener {
 
   public void openDecorHub(Player player) {
     Component title = plugin.parse(plugin.getConfig().getString("gui.decor-title", "<#cba6f7><bold>Decoration Studio</bold>"));
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null, null);
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.DECOR_HUB, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
 
@@ -607,27 +659,46 @@ public class TrimGuiManager implements Listener {
     player.openInventory(inv);
   }
 
-  public void openHatMenu(Player player) {
-    Component title = plugin.parse(plugin.getConfig().getString("gui.hat-title", "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold>"));
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_STUDIO, null, null);
+  public void openHatMenu(Player player, int page) {
+    boolean hideLocked = plugin.getConfig().getBoolean("hats.hide-locked-hats", true);
+    List<String> validHats = new ArrayList<>();
+    for (String hatId : plugin.getDbHatItems()) {
+      if (plugin.getNexoItem(hatId) == null) continue;
+      if (hideLocked && !canUseSpecificHat(player, hatId)) continue;
+      validHats.add(hatId);
+    }
+
+    int totalPages = Math.max(1, (int) Math.ceil(validHats.size() / 36.0));
+    int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+    String rawTitle = plugin.getConfig().getString("gui.hat-title",
+        "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold> <#6c7086>(<page>/<max_page>)");
+    Component title = plugin.parse(rawTitle,
+        Placeholder.unparsed("page", String.valueOf(currentPage + 1)),
+        Placeholder.unparsed("max_page", String.valueOf(totalPages)));
+
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_STUDIO, null, null, currentPage);
     Inventory inv = Bukkit.createInventory(holder, 54, title);
     holder.setInventory(inv);
 
     ItemStack filler = createFiller(Material.BLACK_STAINED_GLASS_PANE);
     for (int i = 36; i < 54; i++) inv.setItem(i, filler);
 
-    List<String> hatIds = plugin.getDbHatItems();
     String currentHat = getEffectiveHatId(player);
     String defHat = getDefaultHatId();
-    int slotIndex = 0;
+    int startIndex = currentPage * 36;
+    int endIndex = Math.min(validHats.size(), startIndex + 36);
 
-    for (String hatId : hatIds) {
-      if (slotIndex >= 36) break;
+    int slotIndex = 0;
+    for (int i = startIndex; i < endIndex; i++) {
+      String hatId = validHats.get(i);
       ItemStack nexoStack = plugin.getNexoItem(hatId);
       if (nexoStack == null) continue;
 
       boolean selected = hatId.equalsIgnoreCase(currentHat);
       boolean isDefault = isForceDefaultHat() && defHat != null && hatId.equalsIgnoreCase(defHat);
+      boolean unlocked = canUseSpecificHat(player, hatId);
+
       ItemStack icon = nexoStack.clone();
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
@@ -637,7 +708,17 @@ public class TrimGuiManager implements Listener {
 
         List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
         if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Server Hat"));
-        appendSelectionOrLockedLore(player, lore, AntiArmorTrim.HAT_PERM, selected);
+        if (unlocked) {
+          String statusRaw = selected
+              ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
+              : plugin.getConfig().getString("gui.unselected-status", "<#6c7086>○ Unselected");
+          lore.add(plugin.parse(statusRaw));
+        } else {
+          String reqPerm = getHatRequiredPermissionNode(hatId);
+          for (String line : plugin.getConfig().getStringList("gui.no-permission-lore")) {
+            lore.add(plugin.parseWithPerm(line, reqPerm));
+          }
+        }
         meta.lore(lore);
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
@@ -653,35 +734,55 @@ public class TrimGuiManager implements Listener {
 
     inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
 
+    if (currentPage > 0) {
+      inv.setItem(48, createStyledButton(Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
+    }
+
     List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Disable custom hat and restore"), plugin.parse("<#a6adc8>your default helmet appearance.")));
-    appendLockedLoreIfNeeded(player, clearLore, AntiArmorTrim.HAT_PERM);
     inv.setItem(49, createStyledButton(Material.BARRIER, "<#f38ba8><bold>Reset & Unequip Hat</bold>", clearLore));
+
+    if (currentPage + 1 < totalPages) {
+      inv.setItem(50, createStyledButton(Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    }
 
     if (plugin.hasAdminPerm(player)) {
       inv.setItem(53, createStyledButton(Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin Hat Manager</bold>", List.of(
-          plugin.parse("<#a6adc8>Manage Nexo hats, edit display"), plugin.parse("<#a6adc8>names, lore, or default hat."))));
+          plugin.parse("<#a6adc8>Manage Nexo hats, permission"), plugin.parse("<#a6adc8>groups, or default hat."))));
     }
     player.openInventory(inv);
   }
 
-  public void openHatAdminMenu(Player player) {
-    Component title = plugin.parse(plugin.getConfig().getString("gui.hat-admin-title", "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold>"));
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_ADMIN, null, null);
+  public void openHatAdminMenu(Player player, int page) {
+    List<String> hatIds = plugin.getDbHatItems();
+    int totalPages = Math.max(1, (int) Math.ceil(hatIds.size() / 36.0));
+    int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+    String rawTitle = plugin.getConfig().getString("gui.hat-admin-title",
+        "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold> <#6c7086>(<page>/<max_page>)");
+    Component title = plugin.parse(rawTitle,
+        Placeholder.unparsed("page", String.valueOf(currentPage + 1)),
+        Placeholder.unparsed("max_page", String.valueOf(totalPages)));
+
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_ADMIN, null, null, currentPage);
     Inventory inv = Bukkit.createInventory(holder, 54, title);
     holder.setInventory(inv);
 
     ItemStack filler = createFiller(Material.BLACK_STAINED_GLASS_PANE);
     for (int i = 36; i < 54; i++) inv.setItem(i, filler);
 
-    List<String> hatIds = plugin.getDbHatItems();
     String defHat = getDefaultHatId();
+    int startIndex = currentPage * 36;
+    int endIndex = Math.min(hatIds.size(), startIndex + 36);
     int slotIndex = 0;
 
-    for (String hatId : hatIds) {
-      if (slotIndex >= 36) break;
+    for (int i = startIndex; i < endIndex; i++) {
+      String hatId = hatIds.get(i);
       ItemStack nexoStack = plugin.getNexoItem(hatId);
       ItemStack icon;
       boolean isDefault = defHat != null && hatId.equalsIgnoreCase(defHat);
+      List<String> groups = getGroupsContainingHat(hatId);
 
       if (nexoStack != null) {
         icon = nexoStack.clone();
@@ -691,9 +792,14 @@ public class TrimGuiManager implements Listener {
           meta.displayName(getHatDisplayName(hatId, nexoStack).append(plugin.parse(" <#6c7086>(" + hatId + ")")));
           if (isDefault && isForceDefaultHat()) meta.setEnchantmentGlintOverride(true);
           List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
+          if (!groups.isEmpty()) {
+            lore.add(plugin.parse("<#a6adc8>Groups: <#f9e2af>" + String.join(", ", groups)));
+          } else {
+            lore.add(plugin.parse("<#a6adc8>Perm: <#6c7086>Default (" + AntiArmorTrim.HAT_PERM + ")"));
+          }
           if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Hat (" + (isForceDefaultHat() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
           lore.add(Component.empty());
-          lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Edit Display Name & Lore"));
+          lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Edit Name & Lore"));
           lore.add(plugin.parse("<#f9e2af>Shift-Left-Click: <#cdd6f4>Set as Forced Default Hat"));
           lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Hat"));
           meta.lore(lore);
@@ -720,12 +826,28 @@ public class TrimGuiManager implements Listener {
     }
 
     inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
-    inv.setItem(49, createStyledButton(Material.ANVIL, "<#a6e3a1><bold>Add New Nexo Hat</bold>", List.of(
-        plugin.parse("<#a6adc8>Click to type a Nexo Item ID"), plugin.parse("<#a6adc8>in chat and add it to the SQLite database."))));
+
+    if (currentPage > 0) {
+      inv.setItem(47, createStyledButton(Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
+    }
+
+    inv.setItem(48, createStyledButton(Material.ANVIL, "<#a6e3a1><bold>Add New Nexo Hat</bold>", List.of(
+        plugin.parse("<#a6adc8>Click to type a Nexo Item ID"), plugin.parse("<#a6adc8>in chat and save to SQLite database."))));
+
+    inv.setItem(50, createStyledButton(Material.BOOKSHELF, "<#cba6f7><bold>Permission Group Manager</bold>", List.of(
+        plugin.parse("<#a6adc8>Create custom permission nodes"),
+        plugin.parse("<#a6adc8>(e.g. <#f9e2af>armortrim.helper<#a6adc8>, <#f9e2af>armortrim.donator<#a6adc8>)"),
+        plugin.parse("<#a6adc8>and click to select hats for each rank!"))));
+
+    if (currentPage + 1 < totalPages) {
+      inv.setItem(51, createStyledButton(Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    }
 
     String statusText = isForceDefaultHat() ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled";
     String defHatText = (defHat != null) ? "<#89dceb>" + defHat : "<#6c7086>None";
-    inv.setItem(51, createStyledButton(Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
+    inv.setItem(53, createStyledButton(Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
         plugin.parse("<#a6adc8>Status: " + statusText),
         plugin.parse("<#a6adc8>Default Hat: " + defHatText),
         Component.empty(),
@@ -735,9 +857,157 @@ public class TrimGuiManager implements Listener {
     player.openInventory(inv);
   }
 
+  // MENU 1: Danh sach cac Permission Groups (Tao perm moi hoac chon perm de them mu)
+  public void openHatGroupListMenu(Player player, int page) {
+    List<String> permNodes = new ArrayList<>(plugin.getDbPermGroups().keySet());
+    int totalPages = Math.max(1, (int) Math.ceil(permNodes.size() / 36.0));
+    int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+    String rawTitle = plugin.getConfig().getString("gui.hat-groups-title",
+        "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Permission Groups</bold> <#6c7086>(<page>/<max_page>)");
+    Component title = plugin.parse(rawTitle,
+        Placeholder.unparsed("page", String.valueOf(currentPage + 1)),
+        Placeholder.unparsed("max_page", String.valueOf(totalPages)));
+
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_GROUP_LIST, null, null, currentPage);
+    Inventory inv = Bukkit.createInventory(holder, 54, title);
+    holder.setInventory(inv);
+
+    ItemStack filler = createFiller(Material.BLACK_STAINED_GLASS_PANE);
+    for (int i = 36; i < 54; i++) inv.setItem(i, filler);
+
+    int startIndex = currentPage * 36;
+    int endIndex = Math.min(permNodes.size(), startIndex + 36);
+    int slotIndex = 0;
+
+    for (int i = startIndex; i < endIndex; i++) {
+      String permNode = permNodes.get(i);
+      Set<String> hatsInGroup = plugin.getDbPermGroups().getOrDefault(permNode, Set.of());
+
+      List<Component> lore = new ArrayList<>();
+      lore.add(plugin.parse("<#a6adc8>Permission: <#f9e2af>" + permNode));
+      lore.add(plugin.parse("<#a6adc8>Selected Hats: <#a6e3a1>" + hatsInGroup.size()));
+      if (!hatsInGroup.isEmpty()) {
+        String previewList = String.join(", ", hatsInGroup.stream().limit(5).toList());
+        if (hatsInGroup.size() > 5) previewList += "...";
+        lore.add(plugin.parse("<#6c7086>(" + previewList + ")"));
+      }
+      lore.add(Component.empty());
+      lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Select Hats for this Permission"));
+      lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Permission Group"));
+
+      ItemStack icon = createStyledButton(Material.TRIPWIRE_HOOK, "<#cba6f7><bold>" + permNode + "</bold>", lore);
+      ItemMeta meta = icon.getItemMeta();
+      if (meta != null) {
+        meta.getPersistentDataContainer().set(getItemAppliedHatKey(), PersistentDataType.STRING, permNode);
+        icon.setItemMeta(meta);
+        applyHiddenComponentTooltips(icon);
+      }
+      inv.setItem(slotIndex++, icon);
+    }
+
+    inv.setItem(45, createBackButton("<#f9e2af><bold>Back</bold>"));
+
+    if (currentPage > 0) {
+      inv.setItem(47, createStyledButton(Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
+    }
+
+    inv.setItem(49, createStyledButton(Material.ANVIL, "<#a6e3a1><bold>Create New Permission Group</bold>", List.of(
+        plugin.parse("<#a6adc8>Click to type a new permission node"),
+        plugin.parse("<#a6adc8>(e.g. <#f9e2af>armortrim.helper<#a6adc8>, <#f9e2af>armortrim.media<#a6adc8>)"),
+        plugin.parse("<#a6adc8>and select hats for it!"))));
+
+    if (currentPage + 1 < totalPages) {
+      inv.setItem(51, createStyledButton(Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    }
+
+    player.openInventory(inv);
+  }
+
+  // MENU 2: Chon mu cho Permission Group (Click mu nao la add/remove mu do vo group perm)
+  public void openHatGroupSelectorMenu(Player player, String permNode, int page) {
+    List<String> hatIds = plugin.getDbHatItems();
+    int totalPages = Math.max(1, (int) Math.ceil(hatIds.size() / 36.0));
+    int currentPage = Math.max(0, Math.min(page, totalPages - 1));
+
+    String rawTitle = plugin.getConfig().getString("gui.hat-group-select-title",
+        "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
+    Component title = plugin.parse(rawTitle,
+        Placeholder.unparsed("perm", permNode),
+        Placeholder.unparsed("page", String.valueOf(currentPage + 1)),
+        Placeholder.unparsed("max_page", String.valueOf(totalPages)));
+
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_GROUP_SELECTOR, null, permNode, currentPage);
+    Inventory inv = Bukkit.createInventory(holder, 54, title);
+    holder.setInventory(inv);
+
+    ItemStack filler = createFiller(Material.BLACK_STAINED_GLASS_PANE);
+    for (int i = 36; i < 54; i++) inv.setItem(i, filler);
+
+    int startIndex = currentPage * 36;
+    int endIndex = Math.min(hatIds.size(), startIndex + 36);
+    int slotIndex = 0;
+
+    for (int i = startIndex; i < endIndex; i++) {
+      String hatId = hatIds.get(i);
+      ItemStack nexoStack = plugin.getNexoItem(hatId);
+      if (nexoStack == null) continue;
+
+      boolean inGroup = plugin.isHatInDbPermGroup(permNode, hatId);
+      ItemStack icon = nexoStack.clone();
+      ItemMeta meta = icon.getItemMeta();
+      if (meta != null) {
+        hideAllVanillaTooltips(meta);
+        meta.displayName(getHatDisplayName(hatId, nexoStack).append(plugin.parse(" <#6c7086>(" + hatId + ")")));
+        if (inGroup) meta.setEnchantmentGlintOverride(true);
+
+        List<Component> lore = new ArrayList<>(getHatCustomLore(hatId, nexoStack));
+        lore.add(Component.empty());
+        if (inGroup) {
+          lore.add(plugin.parse("<#a6e3a1>● Included in <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#fab387>Click to remove from this group"));
+        } else {
+          lore.add(plugin.parse("<#6c7086>○ Not in <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#89dceb>Click to add to this group"));
+        }
+        meta.lore(lore);
+
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+        for (NamespacedKey k : new ArrayList<>(pdc.getKeys())) {
+          if (k.getNamespace().toLowerCase().contains("nexo")) pdc.remove(k);
+        }
+        pdc.set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
+        icon.setItemMeta(meta);
+      }
+      applyHiddenComponentTooltips(icon);
+      inv.setItem(slotIndex++, icon);
+    }
+
+    inv.setItem(45, createBackButton("<#f9e2af><bold>Back to Groups</bold>"));
+
+    if (currentPage > 0) {
+      inv.setItem(47, createStyledButton(Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
+    }
+
+    Set<String> selectedSet = plugin.getDbPermGroups().getOrDefault(permNode.toLowerCase(), Set.of());
+    inv.setItem(49, createStyledButton(Material.BOOKSHELF, "<#f9e2af><bold>Editing: " + permNode + "</bold>", List.of(
+        plugin.parse("<#a6adc8>Total Hats Selected: <#a6e3a1>" + selectedSet.size()),
+        plugin.parse("<#a6adc8>Click any hat above to toggle it!"))));
+
+    if (currentPage + 1 < totalPages) {
+      inv.setItem(51, createStyledButton(Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(
+          plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    }
+
+    player.openInventory(inv);
+  }
+
   public void openHatEditorMenu(Player player, String hatId) {
     String rawTitle = plugin.getConfig().getString("gui.hat-editor-title", "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>");
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_EDITOR, null, hatId);
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.HAT_EDITOR, null, hatId, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, plugin.parse(rawTitle, Placeholder.unparsed("id", hatId)));
     holder.setInventory(inv);
 
@@ -758,7 +1028,13 @@ public class TrimGuiManager implements Listener {
     loreList.add(Component.empty());
     loreList.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set or append lore in chat"));
     loreList.add(plugin.parse("<#fab387>Right-Click: <#cdd6f4>Clear custom lore"));
-    inv.setItem(12, createStyledButton(Material.WRITABLE_BOOK, "<#cba6f7><bold>Edit Hat Lore</bold>", loreList));
+    inv.setItem(11, createStyledButton(Material.WRITABLE_BOOK, "<#cba6f7><bold>Edit Hat Lore</bold>", loreList));
+
+    List<String> groups = getGroupsContainingHat(hatId);
+    inv.setItem(12, createStyledButton(Material.BOOKSHELF, "<#a6e3a1><bold>Manage Permission Groups</bold>", List.of(
+        plugin.parse("<#a6adc8>Assigned Groups: <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
+        Component.empty(),
+        plugin.parse("<#89dceb>Click: <#cdd6f4>Open Permission Group Manager"))));
 
     ItemStack previewHat = createCosmeticHatFromHelmet(new ItemStack(Material.NETHERITE_HELMET), hatId);
     if (previewHat != null) inv.setItem(14, previewHat);
@@ -777,7 +1053,7 @@ public class TrimGuiManager implements Listener {
 
   public void deleteHatByCommand(Player player, String hatId) {
     deleteHatFromConfig(player, hatId);
-    openHatAdminMenu(player);
+    openHatAdminMenu(player, 0);
   }
 
   private void deleteHatFromConfig(Player player, String hatId) {
@@ -793,7 +1069,7 @@ public class TrimGuiManager implements Listener {
 
   public void openRenameMenu(Player player) {
     Component title = plugin.parse(plugin.getConfig().getString("gui.rename-title", "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"));
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null, null);
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.RENAME_STUDIO, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
 
@@ -891,7 +1167,7 @@ public class TrimGuiManager implements Listener {
 
   public void openMainMenu(Player player) {
     Component title = plugin.parse(plugin.getConfig().getString("gui.main-title", "<#cba6f7><bold>Armor Trim Studio</bold>"));
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null, null);
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_MAIN, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
 
@@ -943,7 +1219,7 @@ public class TrimGuiManager implements Listener {
     String slotName = getSlotEnglishName(slot);
     Material previewMat = getPreviewMaterial(slot);
     String rawTitle = plugin.getConfig().getString("gui.slot-title", "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>");
-    TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot, null);
+    TrimMenuHolder holder = new TrimMenuHolder(MenuType.TRIM_SLOT, slot, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 54, plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", plugin.getItemSpriteTag(previewMat))));
     holder.setInventory(inv);
 
@@ -1072,6 +1348,7 @@ public class TrimGuiManager implements Listener {
   private void clearPendingPrompts(UUID uuid) {
     pendingRenamePlayers.remove(uuid);
     pendingAddHatPlayers.remove(uuid);
+    pendingCreateGroupPlayers.remove(uuid);
     pendingHatNameEdit.remove(uuid);
     pendingHatLoreEdit.remove(uuid);
   }
@@ -1085,61 +1362,84 @@ public class TrimGuiManager implements Listener {
     int rawSlot = event.getRawSlot();
     if (rawSlot < 0 || rawSlot >= event.getInventory().getSize()) return;
     MenuType menuType = holder.getMenuType();
+    int page = holder.getPage();
 
     if (menuType == MenuType.DECOR_HUB) {
       if (rawSlot == 11) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openMainMenu(player); }
-      else if (rawSlot == 13) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openHatMenu(player); }
+      else if (rawSlot == 13) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openHatMenu(player, 0); }
       else if (rawSlot == 15) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openRenameMenu(player); }
       return;
     }
 
     if (menuType == MenuType.HAT_STUDIO) {
       if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openDecorHub(player); return; }
+      if (rawSlot == 48 && page > 0) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatMenu(player, page - 1);
+        return;
+      }
+      if (rawSlot == 50) {
+        ItemStack nextBtn = event.getCurrentItem();
+        if (nextBtn != null && nextBtn.getType() != Material.BLACK_STAINED_GLASS_PANE && !nextBtn.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openHatMenu(player, page + 1);
+        }
+        return;
+      }
       if (rawSlot == 53 && plugin.hasAdminPerm(player)) {
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
-        openHatAdminMenu(player);
+        openHatAdminMenu(player, 0);
         return;
       }
       if (rawSlot == 49) {
-        if (!canUseHat(player)) {
-          player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-          player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.HAT_PERM));
-          return;
-        }
         setSavedHatId(player, null);
         forceRefreshEquippedHat(player);
         applyAllSavedTrims(player);
         player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
         player.sendMessage(plugin.getMessage("hat-cleared"));
-        openHatMenu(player);
+        openHatMenu(player, page);
         return;
       }
       if (rawSlot < 36) {
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType().isAir()) return;
-        if (!canUseHat(player)) {
-          player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-          player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", AntiArmorTrim.HAT_PERM));
-          return;
-        }
         ItemMeta meta = clicked.getItemMeta();
         if (meta == null) return;
         String hatId = meta.getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
         if (hatId == null) return;
 
+        if (!canUseSpecificHat(player, hatId)) {
+          player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+          player.sendMessage(plugin.getMessageWithPerm("no-permission-gui", getHatRequiredPermissionNode(hatId)));
+          return;
+        }
+
         setSavedHatId(player, hatId);
         forceRefreshEquippedHat(player);
         player.playSound(player.getLocation(), Sound.ITEM_ARMOR_EQUIP_NETHERITE, 1f, 1.2f);
         player.sendMessage(plugin.getMessage("hat-selected", Placeholder.component("hat", getHatDisplayName(hatId, plugin.getNexoItem(hatId)))));
-        openHatMenu(player);
+        openHatMenu(player, page);
       }
       return;
     }
 
     if (menuType == MenuType.HAT_ADMIN) {
       if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
-      if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatMenu(player); return; }
-      if (rawSlot == 49) {
+      if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatMenu(player, 0); return; }
+      if (rawSlot == 47 && page > 0) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatAdminMenu(player, page - 1);
+        return;
+      }
+      if (rawSlot == 51) {
+        ItemStack nextBtn = event.getCurrentItem();
+        if (nextBtn != null && nextBtn.getType() != Material.BLACK_STAINED_GLASS_PANE && !nextBtn.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openHatAdminMenu(player, page + 1);
+        }
+        return;
+      }
+      if (rawSlot == 48) {
         player.closeInventory();
         clearPendingPrompts(player.getUniqueId());
         pendingAddHatPlayers.add(player.getUniqueId());
@@ -1147,7 +1447,12 @@ public class TrimGuiManager implements Listener {
         player.sendMessage(plugin.getMessage("hat-admin-prompt-id"));
         return;
       }
-      if (rawSlot == 51) {
+      if (rawSlot == 50) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatGroupListMenu(player, 0);
+        return;
+      }
+      if (rawSlot == 53) {
         if (event.isRightClick()) {
           setForceDefaultHat(player, null, false);
         } else {
@@ -1166,7 +1471,7 @@ public class TrimGuiManager implements Listener {
           player.sendMessage(plugin.getMessage("hat-admin-default-toggled",
               Placeholder.parsed("state", nextState ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled")));
         }
-        openHatAdminMenu(player);
+        openHatAdminMenu(player, page);
         return;
       }
       if (rawSlot < 36) {
@@ -1177,16 +1482,105 @@ public class TrimGuiManager implements Listener {
 
         if (plugin.getNexoItem(hatId) == null || event.isRightClick()) {
           deleteHatFromConfig(player, hatId);
-          openHatAdminMenu(player);
+          openHatAdminMenu(player, page);
           return;
         }
         if (event.isShiftClick()) {
           setForceDefaultHat(player, hatId, true);
-          openHatAdminMenu(player);
+          openHatAdminMenu(player, page);
           return;
         }
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
         openHatEditorMenu(player, hatId);
+      }
+      return;
+    }
+
+    if (menuType == MenuType.HAT_GROUP_LIST) {
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
+      if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatAdminMenu(player, 0); return; }
+      if (rawSlot == 47 && page > 0) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatGroupListMenu(player, page - 1);
+        return;
+      }
+      if (rawSlot == 51) {
+        ItemStack nextBtn = event.getCurrentItem();
+        if (nextBtn != null && nextBtn.getType() != Material.BLACK_STAINED_GLASS_PANE && !nextBtn.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openHatGroupListMenu(player, page + 1);
+        }
+        return;
+      }
+      if (rawSlot == 49) {
+        player.closeInventory();
+        clearPendingPrompts(player.getUniqueId());
+        pendingCreateGroupPlayers.add(player.getUniqueId());
+        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("hat-admin-prompt-group"));
+        return;
+      }
+      if (rawSlot < 36) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
+        String permNode = clicked.getItemMeta().getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
+        if (permNode == null) return;
+
+        if (event.isRightClick()) {
+          plugin.deleteDbPermGroup(permNode);
+          for (Player online : Bukkit.getOnlinePlayers()) {
+            forceRefreshEquippedHat(online);
+            applyAllSavedTrims(online);
+          }
+          player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-deleted", Placeholder.unparsed("perm", permNode)));
+          openHatGroupListMenu(player, page);
+          return;
+        }
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatGroupSelectorMenu(player, permNode, 0);
+      }
+      return;
+    }
+
+    if (menuType == MenuType.HAT_GROUP_SELECTOR) {
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
+      String permNode = holder.getEditingHatId();
+      if (permNode == null) return;
+
+      if (rawSlot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatGroupListMenu(player, 0); return; }
+      if (rawSlot == 47 && page > 0) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatGroupSelectorMenu(player, permNode, page - 1);
+        return;
+      }
+      if (rawSlot == 51) {
+        ItemStack nextBtn = event.getCurrentItem();
+        if (nextBtn != null && nextBtn.getType() != Material.BLACK_STAINED_GLASS_PANE && !nextBtn.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openHatGroupSelectorMenu(player, permNode, page + 1);
+        }
+        return;
+      }
+      if (rawSlot < 36) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
+        String hatId = clicked.getItemMeta().getPersistentDataContainer().get(getItemAppliedHatKey(), PersistentDataType.STRING);
+        if (hatId == null) return;
+
+        boolean added = plugin.toggleHatInDbPermGroup(permNode, hatId);
+        for (Player online : Bukkit.getOnlinePlayers()) {
+          forceRefreshEquippedHat(online);
+          applyAllSavedTrims(online);
+        }
+        if (added) {
+          player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-hat-added", Placeholder.unparsed("id", hatId), Placeholder.unparsed("perm", permNode)));
+        } else {
+          player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-hat-removed", Placeholder.unparsed("id", hatId), Placeholder.unparsed("perm", permNode)));
+        }
+        openHatGroupSelectorMenu(player, permNode, page);
       }
       return;
     }
@@ -1196,7 +1590,7 @@ public class TrimGuiManager implements Listener {
       String hatId = holder.getEditingHatId();
       if (hatId == null) return;
 
-      if (rawSlot == 18) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatAdminMenu(player); return; }
+      if (rawSlot == 18) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openHatAdminMenu(player, 0); return; }
       if (rawSlot == 10) {
         if (event.isRightClick()) {
           plugin.setHatNameInDb(hatId, null);
@@ -1215,7 +1609,7 @@ public class TrimGuiManager implements Listener {
         player.sendMessage(plugin.getMessage("hat-admin-prompt-name", Placeholder.unparsed("id", hatId)));
         return;
       }
-      if (rawSlot == 12) {
+      if (rawSlot == 11) {
         if (event.isRightClick()) {
           plugin.setHatLoreInDb(hatId, null);
           for (Player online : Bukkit.getOnlinePlayers()) {
@@ -1233,6 +1627,11 @@ public class TrimGuiManager implements Listener {
         player.sendMessage(plugin.getMessage("hat-admin-prompt-lore", Placeholder.unparsed("id", hatId)));
         return;
       }
+      if (rawSlot == 12) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openHatGroupListMenu(player, 0);
+        return;
+      }
       if (rawSlot == 15) {
         if (event.isRightClick()) {
           setForceDefaultHat(player, null, false);
@@ -1244,7 +1643,7 @@ public class TrimGuiManager implements Listener {
       }
       if (rawSlot == 16) {
         deleteHatFromConfig(player, hatId);
-        openHatAdminMenu(player);
+        openHatAdminMenu(player, 0);
       }
       return;
     }
@@ -1424,6 +1823,26 @@ public class TrimGuiManager implements Listener {
     Player player = event.getPlayer();
     UUID uuid = player.getUniqueId();
 
+    if (pendingCreateGroupPlayers.remove(uuid)) {
+      event.setCancelled(true);
+      String rawPerm = event.signedMessage().message().trim();
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!player.isOnline()) return;
+        if (rawPerm.equalsIgnoreCase("cancel")) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+          player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+          openHatGroupListMenu(player, 0);
+          return;
+        }
+        String normalized = plugin.normalizePermNode(rawPerm);
+        plugin.createDbPermGroup(normalized);
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        player.sendMessage(plugin.getMessage("hat-admin-group-created", Placeholder.unparsed("perm", normalized)));
+        openHatGroupSelectorMenu(player, normalized, 0);
+      });
+      return;
+    }
+
     if (pendingAddHatPlayers.remove(uuid)) {
       event.setCancelled(true);
       String rawId = event.signedMessage().message().trim();
@@ -1432,13 +1851,13 @@ public class TrimGuiManager implements Listener {
         if (rawId.equalsIgnoreCase("cancel")) {
           player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
           player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
-          openHatAdminMenu(player);
+          openHatAdminMenu(player, 0);
           return;
         }
         if (plugin.getDbHatItems().stream().anyMatch(h -> h.equalsIgnoreCase(rawId))) {
           player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
           player.sendMessage(plugin.getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
-          openHatAdminMenu(player);
+          openHatAdminMenu(player, 0);
           return;
         }
         plugin.addHatToDb(rawId);
@@ -1450,7 +1869,7 @@ public class TrimGuiManager implements Listener {
         } else {
           player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
           player.sendMessage(plugin.getMessage("hat-admin-added-invalid", Placeholder.unparsed("id", rawId)));
-          openHatAdminMenu(player);
+          openHatAdminMenu(player, 0);
         }
       });
       return;
@@ -1535,17 +1954,20 @@ public class TrimGuiManager implements Listener {
     private final MenuType menuType;
     private final EquipmentSlot slotType;
     private final String editingHatId;
+    private final int page;
     private Inventory inventory;
 
-    public TrimMenuHolder(MenuType menuType, EquipmentSlot slotType, String editingHatId) {
+    public TrimMenuHolder(MenuType menuType, EquipmentSlot slotType, String editingHatId, int page) {
       this.menuType = menuType;
       this.slotType = slotType;
       this.editingHatId = editingHatId;
+      this.page = page;
     }
 
     public MenuType getMenuType() { return menuType; }
     public EquipmentSlot getSlotType() { return slotType; }
     public String getEditingHatId() { return editingHatId; }
+    public int getPage() { return page; }
     public void setInventory(Inventory inventory) { this.inventory = inventory; }
     @Override public @NotNull Inventory getInventory() { return inventory; }
   }
