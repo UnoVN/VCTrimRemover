@@ -39,8 +39,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -69,6 +71,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private final List<String> dbHatItems = new ArrayList<>();
   private final Map<String, String> dbHatNames = new LinkedHashMap<>();
   private final Map<String, List<String>> dbHatLores = new LinkedHashMap<>();
+  private final Map<String, Set<String>> dbPermGroups = new LinkedHashMap<>();
   private boolean dbForceDefaultHat = false;
   private String dbDefaultHat = "";
 
@@ -99,21 +102,19 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
            Statement st = conn.createStatement()) {
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_items (hat_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_groups (perm_node TEXT PRIMARY KEY, hat_ids TEXT)");
       }
       loadHatsFromDatabase();
 
-      // Tu dong migrate tu config.yml sang SQLite neu database dang trong
       if (dbHatItems.isEmpty()) {
         List<String> cfgItems = getConfig().getStringList("hats.items");
-        if (!cfgItems.isEmpty()) {
-          for (String id : cfgItems) {
-            String name = getConfig().getString("hats.definitions." + id + ".display-name");
-            List<String> lore = getConfig().contains("hats.definitions." + id + ".lore")
-                ? getConfig().getStringList("hats.definitions." + id + ".lore") : null;
-            addHatToDb(id);
-            if (name != null) setHatNameInDb(id, name);
-            if (lore != null) setHatLoreInDb(id, lore);
-          }
+        for (String id : cfgItems) {
+          String name = getConfig().getString("hats.definitions." + id + ".display-name");
+          List<String> lore = getConfig().contains("hats.definitions." + id + ".lore")
+              ? getConfig().getStringList("hats.definitions." + id + ".lore") : null;
+          addHatToDb(id);
+          if (name != null) setHatNameInDb(id, name);
+          if (lore != null) setHatLoreInDb(id, lore);
         }
         String cfgDef = getConfig().getString("hats.default-hat", "");
         boolean cfgForce = getConfig().getBoolean("hats.force-default-hat", false);
@@ -130,6 +131,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     dbHatItems.clear();
     dbHatNames.clear();
     dbHatLores.clear();
+    dbPermGroups.clear();
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          Statement st = conn.createStatement()) {
       try (ResultSet rs = st.executeQuery("SELECT hat_id, display_name, lore FROM hat_items ORDER BY sort_order ASC, rowid ASC")) {
@@ -142,6 +144,19 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           if (loreRaw != null) {
             dbHatLores.put(id, loreRaw.isEmpty() ? new ArrayList<>() : new ArrayList<>(Arrays.asList(loreRaw.split("\n", -1))));
           }
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT perm_node, hat_ids FROM hat_groups ORDER BY rowid ASC")) {
+        while (rs.next()) {
+          String perm = rs.getString("perm_node");
+          String rawIds = rs.getString("hat_ids");
+          Set<String> set = new LinkedHashSet<>();
+          if (rawIds != null && !rawIds.isBlank()) {
+            for (String s : rawIds.split(",")) {
+              if (!s.isBlank()) set.add(s.trim());
+            }
+          }
+          if (perm != null && !perm.isBlank()) dbPermGroups.put(perm.trim().toLowerCase(), set);
         }
       }
       try (ResultSet rs = st.executeQuery("SELECT setting_key, setting_value FROM hat_settings")) {
@@ -157,6 +172,66 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public List<String> getDbHatItems() {
     return Collections.unmodifiableList(dbHatItems);
+  }
+
+  public Map<String, Set<String>> getDbPermGroups() {
+    return Collections.unmodifiableMap(dbPermGroups);
+  }
+
+  public String normalizePermNode(String rawInput) {
+    String clean = rawInput.trim().toLowerCase().replace(" ", "_");
+    return clean.contains(".") ? clean : "armortrim." + clean;
+  }
+
+  public void createDbPermGroup(String rawPerm) {
+    String perm = normalizePermNode(rawPerm);
+    if (!dbPermGroups.containsKey(perm)) {
+      dbPermGroups.put(perm, new LinkedHashSet<>());
+      saveDbPermGroup(perm);
+    }
+  }
+
+  public void deleteDbPermGroup(String permNode) {
+    String perm = permNode.trim().toLowerCase();
+    dbPermGroups.remove(perm);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM hat_groups WHERE perm_node = ?")) {
+      ps.setString(1, perm);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public boolean isHatInDbPermGroup(String permNode, String hatId) {
+    Set<String> set = dbPermGroups.get(permNode.toLowerCase());
+    if (set == null) return false;
+    return set.stream().anyMatch(h -> h.equalsIgnoreCase(hatId));
+  }
+
+  public boolean toggleHatInDbPermGroup(String permNode, String hatId) {
+    String perm = permNode.trim().toLowerCase();
+    Set<String> set = dbPermGroups.computeIfAbsent(perm, k -> new LinkedHashSet<>());
+    String existing = set.stream().filter(h -> h.equalsIgnoreCase(hatId)).findFirst().orElse(null);
+    boolean added;
+    if (existing != null) {
+      set.remove(existing);
+      added = false;
+    } else {
+      set.add(hatId.trim());
+      added = true;
+    }
+    saveDbPermGroup(perm);
+    return added;
+  }
+
+  private void saveDbPermGroup(String perm) {
+    Set<String> set = dbPermGroups.getOrDefault(perm, Collections.emptySet());
+    String joined = String.join(",", set);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_groups (perm_node, hat_ids) VALUES (?, ?)")) {
+      ps.setString(1, perm);
+      ps.setString(2, joined);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
   }
 
   @Nullable
@@ -197,6 +272,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     dbHatItems.remove(matched);
     dbHatNames.remove(matched);
     dbHatLores.remove(matched);
+    for (Map.Entry<String, Set<String>> entry : dbPermGroups.entrySet()) {
+      if (entry.getValue().removeIf(h -> h.equalsIgnoreCase(matched))) {
+        saveDbPermGroup(entry.getKey());
+      }
+    }
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          PreparedStatement ps = conn.prepareStatement("DELETE FROM hat_items WHERE hat_id = ?")) {
       ps.setString(1, matched);
@@ -435,22 +515,27 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public void handleHatCommand(Player p, String[] args) {
     if (args.length == 0) {
-      guiManager.openHatMenu(p);
+      guiManager.openHatMenu(p, 0);
       return;
     }
     String sub = args[0].toLowerCase();
-    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove") || sub.equals("delete") || sub.equals("default")) {
+    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
+        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
       if (!hasAdminPerm(p)) {
         p.sendMessage(getMessage("no-permission"));
         return;
       }
       if (sub.equals("admin")) {
         if (args.length == 1) {
-          guiManager.openHatAdminMenu(p);
+          guiManager.openHatAdminMenu(p, 0);
           return;
         }
         sub = args[1].toLowerCase();
         args = Arrays.copyOfRange(args, 1, args.length);
+      }
+      if (sub.equals("groups") || sub.equals("group")) {
+        guiManager.openHatGroupListMenu(p, 0);
+        return;
       }
       if (sub.equals("default") && args.length >= 2) {
         String rawId = args[1].trim();
@@ -477,7 +562,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         } else {
           p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
           p.sendMessage(getMessage("hat-admin-added-invalid", Placeholder.unparsed("id", rawId)));
-          guiManager.openHatAdminMenu(p);
+          guiManager.openHatAdminMenu(p, 0);
         }
         return;
       }
@@ -489,10 +574,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         guiManager.deleteHatByCommand(p, args[1].trim());
         return;
       }
-      guiManager.openHatAdminMenu(p);
+      guiManager.openHatAdminMenu(p, 0);
       return;
     }
-    guiManager.openHatMenu(p);
+    guiManager.openHatMenu(p, 0);
   }
 
   @Override
@@ -535,6 +620,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         sender.sendMessage(getMessage("reload-success"));
         return true;
       }
+      if (args[0].equalsIgnoreCase("groups") && sender instanceof Player p) {
+        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
+        guiManager.openHatGroupListMenu(p, 0);
+        return true;
+      }
       if (args[0].equalsIgnoreCase("default") && args.length >= 2 && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
         String rawId = args[1].trim();
@@ -547,7 +637,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       }
       if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openHatAdminMenu(p);
+        guiManager.openHatAdminMenu(p, 0);
         return true;
       }
     }
@@ -559,7 +649,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
     String cmd = command.getName().toLowerCase();
     if (cmd.equals("antitrim") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("reload", "hats", "admin", "default");
+      if (args.length == 1) return List.of("reload", "hats", "groups", "default");
       if (args.length == 2 && args[0].equalsIgnoreCase("default")) {
         String prefix = args[1].toLowerCase();
         List<String> opts = new ArrayList<>(List.of("off", "none"));
@@ -571,27 +661,14 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     if (cmd.equals("hat") && hasAdminPerm(sender)) {
       if (args.length == 1) {
         String prefix = args[0].toLowerCase();
-        return List.of("admin", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
       }
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
         if (sub.equals("admin")) {
-          return List.of("add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+          return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
         }
-        if (sub.equals("add") || sub.equals("default")) {
-          List<String> opts = new ArrayList<>();
-          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
-          opts.addAll(getAllNexoItemIds());
-          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
-        }
-        if (sub.equals("edit") || sub.equals("remove")) {
-          return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-        }
-      }
-      if (args.length == 3 && args[0].equalsIgnoreCase("admin")) {
-        String sub = args[1].toLowerCase();
-        String prefix = args[2].toLowerCase();
         if (sub.equals("add") || sub.equals("default")) {
           List<String> opts = new ArrayList<>();
           if (sub.equals("default")) opts.addAll(List.of("off", "none"));
