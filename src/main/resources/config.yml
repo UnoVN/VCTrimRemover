@@ -6,8 +6,10 @@ gui:
   decor-title: "<#cba6f7><bold>Decoration Studio</bold>"
   main-title: "<#cba6f7><bold>Armor Trim Studio</bold>"
   slot-title: "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>"
-  hat-title: "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold>"
-  hat-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold>"
+  hat-title: "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold> <#6c7086>(<page>/<max_page>)"
+  hat-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold> <#6c7086>(<page>/<max_page>)"
+  hat-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Permission Groups</bold> <#6c7086>(<page>/<max_page>)"
+  hat-group-select-title: "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)"
   hat-editor-title: "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>"
   rename-title: "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"
   selected-status: "<#a6e3a1>● Selected"
@@ -23,6 +25,7 @@ gui:
 hats:
   force-default-hat: false
   default-hat: ""
+  hide-locked-hats: true
   items: []
   definitions: {}
 
@@ -44,6 +47,7 @@ messages:
   hat-admin-prompt-id: "<white><sprite:items:item/command_block></white> <#cdd6f4>Type the <#89dceb>Nexo Item ID<#cdd6f4> in chat, or type <#f38ba8>cancel<#cdd6f4>."
   hat-admin-prompt-name: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new <#89dceb>Display Name<#cdd6f4> for <#cba6f7><id><#cdd6f4>, or type <#f38ba8>cancel<#cdd6f4>."
   hat-admin-prompt-lore: "<white><sprite:items:item/writable_book></white> <#cdd6f4>Type new <#89dceb>Lore<#cdd6f4> (use <#f9e2af>|<#cdd6f4> for new lines, or <#a6e3a1>add <text><#cdd6f4> to append), or <#f38ba8>cancel<#cdd6f4>."
+  hat-admin-prompt-group: "<white><sprite:items:item/bookshelf></white> <#cdd6f4>Type the new <#f9e2af>Permission Node<#cdd6f4> in chat (e.g. <#89dceb>armortrim.helper<#cdd6f4>, <#89dceb>armortrim.donator<#cdd6f4>), or type <#f38ba8>cancel<#cdd6f4>."
   hat-admin-cancelled: "<#a6adc8>Operation cancelled."
   hat-admin-added: "<#a6e3a1>Added Nexo hat <#89dceb><id><#a6e3a1>."
   hat-admin-added-invalid: "<#fab387>Added <#f38ba8><id><#fab387>, but it was not found in Nexo."
@@ -53,6 +57,10 @@ messages:
   hat-admin-name-reset: "<#cdd6f4>Reset display name for <#89dceb><id><#cdd6f4>."
   hat-admin-lore-updated: "<#a6e3a1>Updated lore for <#89dceb><id><#a6e3a1>."
   hat-admin-lore-reset: "<#cdd6f4>Cleared custom lore for <#89dceb><id><#cdd6f4>."
+  hat-admin-group-created: "<#a6e3a1>Created permission group <#f9e2af><perm><#a6e3a1>."
+  hat-admin-group-deleted: "<#f38ba8>Deleted permission group <#f9e2af><perm><#f38ba8>."
+  hat-admin-group-hat-added: "<#a6e3a1>Added hat <#89dceb><id><#a6e3a1> to permission <#f9e2af><perm><#a6e3a1>."
+  hat-admin-group-hat-removed: "<#fab387>Removed hat <#89dceb><id><#fab387> from permission <#f9e2af><perm><#fab387>."
   hat-admin-default-set: "<#a6e3a1>Set forced default hat to <#89dceb><id><#a6e3a1>."
   hat-admin-default-cleared: "<#fab387>Disabled forced default hat."
   hat-admin-default-toggled: "<#cdd6f4>Force Default Hat is now <state><#cdd6f4>."
@@ -65,4 +73,4 @@ messages:
   reload-success: "<#a6e3a1>Configuration & SQLite Hat Database reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | default <id|off>"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | groups | default <id|off>"
