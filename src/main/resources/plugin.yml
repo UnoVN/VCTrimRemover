@@ -28,7 +28,7 @@ permissions:
     description: Allows owning, wearing, and using the Auto-Trim GUI Studio.
     default: op
   armortrim.hat:
-    description: Allows equipping Nexo Custom Hats on Diamond and Netherite helmets.
+    description: Allows equipping general Nexo Custom Hats on Diamond and Netherite helmets.
     default: op
   armortrim.rename:
     description: Allows renaming items via the Rename Studio GUI or command.
