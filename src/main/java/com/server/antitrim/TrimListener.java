@@ -2,12 +2,22 @@ package com.server.antitrim;
 
 import com.destroystokyo.paper.event.player.PlayerArmorChangeEvent;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.entity.EnderCrystal;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.TNTPrimed;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
@@ -31,17 +41,29 @@ import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ArmorMeta;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class TrimListener implements Listener {
 
   private final AntiArmorTrim plugin;
   private final TrimGuiManager guiManager;
   private Method setGameRuleMethod;
+
+  private record DamageRecord(UUID attackerUuid, long timestamp) {}
+
+  private final Map<UUID, DamageRecord> lastDamagerMap = new ConcurrentHashMap<>();
+  private final Map<UUID, UUID> crystalAttackerMap = new ConcurrentHashMap<>();
+  private volatile UUID lastExplosionTriggerPlayer;
+  private volatile Location lastExplosionTriggerLoc;
+  private volatile long lastExplosionTriggerTime;
 
   public TrimListener(AntiArmorTrim plugin, TrimGuiManager guiManager) {
     this.plugin = plugin;
@@ -198,6 +220,90 @@ public class TrimListener implements Listener {
     });
   }
 
+  // Theo doi nguoi kich no End Crystal / Respawn Anchor / Sat thuong PvP
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onCombatDamageByEntity(EntityDamageByEntityEvent event) {
+    Entity damaged = event.getEntity();
+    Entity damager = event.getDamager();
+
+    if (damaged instanceof EnderCrystal crystal) {
+      Player crystalBreaker = extractAttackerPlayer(damager);
+      if (crystalBreaker != null) {
+        crystalAttackerMap.put(crystal.getUniqueId(), crystalBreaker.getUniqueId());
+        lastExplosionTriggerPlayer = crystalBreaker.getUniqueId();
+        lastExplosionTriggerLoc = crystal.getLocation();
+        lastExplosionTriggerTime = System.currentTimeMillis();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> crystalAttackerMap.remove(crystal.getUniqueId()), 40L);
+      }
+      return;
+    }
+
+    if (damaged instanceof Player victim) {
+      Player attacker = extractAttackerPlayer(damager);
+      if (attacker != null && !attacker.equals(victim)) {
+        lastDamagerMap.put(victim.getUniqueId(), new DamageRecord(attacker.getUniqueId(), System.currentTimeMillis()));
+      }
+    }
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onExplosionDamage(EntityDamageEvent event) {
+    if (!(event.getEntity() instanceof Player victim)) return;
+    EntityDamageEvent.DamageCause cause = event.getCause();
+    if (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
+      UUID triggerUuid = lastExplosionTriggerPlayer;
+      Location triggerLoc = lastExplosionTriggerLoc;
+      long now = System.currentTimeMillis();
+      if (triggerUuid != null && !triggerUuid.equals(victim.getUniqueId())
+          && (now - lastExplosionTriggerTime) <= 1000L
+          && triggerLoc != null && triggerLoc.getWorld() != null
+          && triggerLoc.getWorld().equals(victim.getWorld())
+          && triggerLoc.distanceSquared(victim.getLocation()) <= 576) {
+        lastDamagerMap.put(victim.getUniqueId(), new DamageRecord(triggerUuid, now));
+      }
+    }
+  }
+
+  @Nullable
+  private Player extractAttackerPlayer(Entity damager) {
+    if (damager instanceof Player p) return p;
+    if (damager instanceof Projectile proj && proj.getShooter() instanceof Player p) return p;
+    if (damager instanceof TNTPrimed tnt && tnt.getSource() instanceof Player p) return p;
+    if (damager instanceof EnderCrystal crystal) {
+      UUID uuid = crystalAttackerMap.get(crystal.getUniqueId());
+      if (uuid != null) {
+        Player p = Bukkit.getPlayer(uuid);
+        if (p != null) return p;
+      }
+      if (lastExplosionTriggerPlayer != null && (System.currentTimeMillis() - lastExplosionTriggerTime) <= 1000L) {
+        return Bukkit.getPlayer(lastExplosionTriggerPlayer);
+      }
+    }
+    return null;
+  }
+
+  @Nullable
+  private Player resolveKiller(PlayerDeathEvent event) {
+    Player victim = event.getPlayer();
+    Player killer = victim.getKiller();
+    if (killer != null && !killer.equals(victim)) return killer;
+
+    try {
+      Entity causing = event.getDamageSource().getCausingEntity();
+      if (causing instanceof Player p && !p.equals(victim)) return p;
+      Entity direct = event.getDamageSource().getDirectEntity();
+      Player directPlayer = extractAttackerPlayer(direct);
+      if (directPlayer != null && !directPlayer.equals(victim)) return directPlayer;
+    } catch (Throwable ignored) {}
+
+    DamageRecord record = lastDamagerMap.get(victim.getUniqueId());
+    if (record != null && (System.currentTimeMillis() - record.timestamp()) <= 15000L) {
+      Player tracked = Bukkit.getPlayer(record.attackerUuid());
+      if (tracked != null && tracked.isOnline() && !tracked.equals(victim)) return tracked;
+    }
+    return null;
+  }
+
   // Khoi phuc mu goc khi chet va phat Nexo KillSound neu bi nguoi choi khac ha guc
   @EventHandler(priority = EventPriority.LOWEST)
   public void onDeath(PlayerDeathEvent event) {
@@ -209,7 +315,8 @@ public class TrimListener implements Listener {
     Player victim = event.getPlayer();
     guiManager.restoreAllCustomHatsInInventory(victim);
 
-    Player killer = victim.getKiller();
+    Player killer = resolveKiller(event);
+    lastDamagerMap.remove(victim.getUniqueId());
     if (killer != null && !killer.equals(victim)) {
       guiManager.playNexoKillSound(killer, victim);
     }
@@ -269,7 +376,9 @@ public class TrimListener implements Listener {
 
   @EventHandler(priority = EventPriority.LOWEST)
   public void onQuitRestore(PlayerQuitEvent event) {
-    guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
+    Player player = event.getPlayer();
+    lastDamagerMap.remove(player.getUniqueId());
+    guiManager.restoreAllCustomHatsInInventory(player);
   }
 
   @EventHandler(priority = EventPriority.LOWEST)
@@ -373,6 +482,19 @@ public class TrimListener implements Listener {
   @EventHandler(priority = EventPriority.HIGHEST)
   public void onInteract(PlayerInteractEvent event) {
     Player player = event.getPlayer();
+
+    if (event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+      Block clicked = event.getClickedBlock();
+      if (clicked != null) {
+        Material type = clicked.getType();
+        if (type == Material.RESPAWN_ANCHOR || type.name().endsWith("_BED")) {
+          lastExplosionTriggerPlayer = player.getUniqueId();
+          lastExplosionTriggerLoc = clicked.getLocation();
+          lastExplosionTriggerTime = System.currentTimeMillis();
+        }
+      }
+    }
+
     ItemStack item = event.getItem();
     if (guiManager.isCustomHatItem(item) && event.getHand() != null) {
       item = guiManager.restoreOriginalHelmet(item);
