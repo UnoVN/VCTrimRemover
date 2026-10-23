@@ -19,6 +19,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
@@ -56,6 +57,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public static final String BYPASS_PERM = "armortrim.bypass";
   public static final String HAT_PERM = "armortrim.hat";
+  public static final String KILLSOUND_PERM = "armortrim.killsound";
   public static final String RENAME_PERM = "armortrim.rename";
   public static final String ADMIN_PERM = "armortrim.admin";
 
@@ -75,11 +77,18 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private boolean dbForceDefaultHat = false;
   private String dbDefaultHat = "";
 
+  private final List<String> dbKillSoundItems = new ArrayList<>();
+  private final Map<String, String> dbKillSoundNames = new LinkedHashMap<>();
+  private final Map<String, List<String>> dbKillSoundLores = new LinkedHashMap<>();
+  private final Map<String, Set<String>> dbKillSoundGroups = new LinkedHashMap<>();
+  private boolean dbForceDefaultKillSound = false;
+  private String dbDefaultKillSound = "";
+
   @Override
   public void onEnable() {
     instance = this;
     saveDefaultConfig();
-    initHatDatabase();
+    initDatabase();
     this.guiManager = new TrimGuiManager(this);
     this.trimListener = new TrimListener(this, guiManager);
     getServer().getPluginManager().registerEvents(trimListener, this);
@@ -88,12 +97,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     registerCmd("decor");
     registerCmd("trim");
     registerCmd("hat");
+    registerCmd("killsound");
     registerCmd("rename");
     Bukkit.getScheduler().runTaskLater(this, this::forceTakeoverCommands, 20L);
-    getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + SQLite Nexo Hat Replacer) enabled!");
+    getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + SQLite Nexo Hats & KillSounds) enabled!");
   }
 
-  public void initHatDatabase() {
+  public void initDatabase() {
     try {
       if (!getDataFolder().exists()) getDataFolder().mkdirs();
       File dbFile = new File(getDataFolder(), "database.db");
@@ -103,8 +113,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_items (hat_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_groups (perm_node TEXT PRIMARY KEY, hat_ids TEXT)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS killsound_items (sound_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS killsound_groups (perm_node TEXT PRIMARY KEY, sound_ids TEXT)");
       }
-      loadHatsFromDatabase();
+      loadDatabase();
 
       if (dbHatItems.isEmpty()) {
         List<String> cfgItems = getConfig().getStringList("hats.items");
@@ -123,15 +135,19 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         }
       }
     } catch (Throwable e) {
-      getLogger().warning("Failed to initialize SQLite hat database: " + e.getMessage());
+      getLogger().warning("Failed to initialize SQLite database: " + e.getMessage());
     }
   }
 
-  public void loadHatsFromDatabase() {
+  public void loadDatabase() {
     dbHatItems.clear();
     dbHatNames.clear();
     dbHatLores.clear();
     dbPermGroups.clear();
+    dbKillSoundItems.clear();
+    dbKillSoundNames.clear();
+    dbKillSoundLores.clear();
+    dbKillSoundGroups.clear();
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          Statement st = conn.createStatement()) {
       try (ResultSet rs = st.executeQuery("SELECT hat_id, display_name, lore FROM hat_items ORDER BY sort_order ASC, rowid ASC")) {
@@ -152,11 +168,32 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           String rawIds = rs.getString("hat_ids");
           Set<String> set = new LinkedHashSet<>();
           if (rawIds != null && !rawIds.isBlank()) {
-            for (String s : rawIds.split(",")) {
-              if (!s.isBlank()) set.add(s.trim());
-            }
+            for (String s : rawIds.split(",")) if (!s.isBlank()) set.add(s.trim());
           }
           if (perm != null && !perm.isBlank()) dbPermGroups.put(perm.trim().toLowerCase(), set);
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT sound_id, display_name, lore FROM killsound_items ORDER BY sort_order ASC, rowid ASC")) {
+        while (rs.next()) {
+          String id = rs.getString("sound_id");
+          String name = rs.getString("display_name");
+          String loreRaw = rs.getString("lore");
+          dbKillSoundItems.add(id);
+          if (name != null && !name.isBlank()) dbKillSoundNames.put(id, name);
+          if (loreRaw != null) {
+            dbKillSoundLores.put(id, loreRaw.isEmpty() ? new ArrayList<>() : new ArrayList<>(Arrays.asList(loreRaw.split("\n", -1))));
+          }
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT perm_node, sound_ids FROM killsound_groups ORDER BY rowid ASC")) {
+        while (rs.next()) {
+          String perm = rs.getString("perm_node");
+          String rawIds = rs.getString("sound_ids");
+          Set<String> set = new LinkedHashSet<>();
+          if (rawIds != null && !rawIds.isBlank()) {
+            for (String s : rawIds.split(",")) if (!s.isBlank()) set.add(s.trim());
+          }
+          if (perm != null && !perm.isBlank()) dbKillSoundGroups.put(perm.trim().toLowerCase(), set);
         }
       }
       try (ResultSet rs = st.executeQuery("SELECT setting_key, setting_value FROM hat_settings")) {
@@ -165,24 +202,33 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           String v = rs.getString("setting_value");
           if ("force_default_hat".equalsIgnoreCase(k)) dbForceDefaultHat = Boolean.parseBoolean(v);
           else if ("default_hat".equalsIgnoreCase(k)) dbDefaultHat = v != null ? v : "";
+          else if ("force_default_killsound".equalsIgnoreCase(k)) dbForceDefaultKillSound = Boolean.parseBoolean(v);
+          else if ("default_killsound".equalsIgnoreCase(k)) dbDefaultKillSound = v != null ? v : "";
         }
       }
     } catch (Throwable ignored) {}
   }
 
-  public List<String> getDbHatItems() {
-    return Collections.unmodifiableList(dbHatItems);
-  }
+  public List<String> getDbHatItems() { return Collections.unmodifiableList(dbHatItems); }
+  public Map<String, Set<String>> getDbPermGroups() { return Collections.unmodifiableMap(dbPermGroups); }
+  @Nullable public String getDbHatDisplayName(String hatId) { return dbHatNames.get(hatId); }
+  @Nullable public List<String> getDbHatLore(String hatId) { return dbHatLores.get(hatId); }
+  public boolean isDbForceDefaultHat() { return dbForceDefaultHat; }
+  @Nullable public String getDbDefaultHat() { return (dbDefaultHat == null || dbDefaultHat.isBlank()) ? null : dbDefaultHat.trim(); }
 
-  public Map<String, Set<String>> getDbPermGroups() {
-    return Collections.unmodifiableMap(dbPermGroups);
-  }
+  public List<String> getDbKillSoundItems() { return Collections.unmodifiableList(dbKillSoundItems); }
+  public Map<String, Set<String>> getDbKillSoundGroups() { return Collections.unmodifiableMap(dbKillSoundGroups); }
+  @Nullable public String getDbKillSoundDisplayName(String soundId) { return dbKillSoundNames.get(soundId); }
+  @Nullable public List<String> getDbKillSoundLore(String soundId) { return dbKillSoundLores.get(soundId); }
+  public boolean isDbForceDefaultKillSound() { return dbForceDefaultKillSound; }
+  @Nullable public String getDbDefaultKillSound() { return (dbDefaultKillSound == null || dbDefaultKillSound.isBlank()) ? null : dbDefaultKillSound.trim(); }
 
   public String normalizePermNode(String rawInput) {
     String clean = rawInput.trim().toLowerCase().replace(" ", "_");
     return clean.contains(".") ? clean : "armortrim." + clean;
   }
 
+  // --- HAT DB METHODS ---
   public void createDbPermGroup(String rawPerm) {
     String perm = normalizePermNode(rawPerm);
     if (!dbPermGroups.containsKey(perm)) {
@@ -203,8 +249,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public boolean isHatInDbPermGroup(String permNode, String hatId) {
     Set<String> set = dbPermGroups.get(permNode.toLowerCase());
-    if (set == null) return false;
-    return set.stream().anyMatch(h -> h.equalsIgnoreCase(hatId));
+    return set != null && set.stream().anyMatch(h -> h.equalsIgnoreCase(hatId));
   }
 
   public boolean toggleHatInDbPermGroup(String permNode, String hatId) {
@@ -212,45 +257,20 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     Set<String> set = dbPermGroups.computeIfAbsent(perm, k -> new LinkedHashSet<>());
     String existing = set.stream().filter(h -> h.equalsIgnoreCase(hatId)).findFirst().orElse(null);
     boolean added;
-    if (existing != null) {
-      set.remove(existing);
-      added = false;
-    } else {
-      set.add(hatId.trim());
-      added = true;
-    }
+    if (existing != null) { set.remove(existing); added = false; }
+    else { set.add(hatId.trim()); added = true; }
     saveDbPermGroup(perm);
     return added;
   }
 
   private void saveDbPermGroup(String perm) {
-    Set<String> set = dbPermGroups.getOrDefault(perm, Collections.emptySet());
-    String joined = String.join(",", set);
+    String joined = String.join(",", dbPermGroups.getOrDefault(perm, Collections.emptySet()));
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_groups (perm_node, hat_ids) VALUES (?, ?)")) {
       ps.setString(1, perm);
       ps.setString(2, joined);
       ps.executeUpdate();
     } catch (Throwable ignored) {}
-  }
-
-  @Nullable
-  public String getDbHatDisplayName(String hatId) {
-    return dbHatNames.get(hatId);
-  }
-
-  @Nullable
-  public List<String> getDbHatLore(String hatId) {
-    return dbHatLores.get(hatId);
-  }
-
-  public boolean isDbForceDefaultHat() {
-    return dbForceDefaultHat;
-  }
-
-  @Nullable
-  public String getDbDefaultHat() {
-    return (dbDefaultHat == null || dbDefaultHat.isBlank()) ? null : dbDefaultHat.trim();
   }
 
   public void addHatToDb(String hatId) {
@@ -273,18 +293,14 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     dbHatNames.remove(matched);
     dbHatLores.remove(matched);
     for (Map.Entry<String, Set<String>> entry : dbPermGroups.entrySet()) {
-      if (entry.getValue().removeIf(h -> h.equalsIgnoreCase(matched))) {
-        saveDbPermGroup(entry.getKey());
-      }
+      if (entry.getValue().removeIf(h -> h.equalsIgnoreCase(matched))) saveDbPermGroup(entry.getKey());
     }
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          PreparedStatement ps = conn.prepareStatement("DELETE FROM hat_items WHERE hat_id = ?")) {
       ps.setString(1, matched);
       ps.executeUpdate();
     } catch (Throwable ignored) {}
-    if (matched.equalsIgnoreCase(dbDefaultHat)) {
-      setDefaultHatInDb("", false);
-    }
+    if (matched.equalsIgnoreCase(dbDefaultHat)) setDefaultHatInDb("", false);
     return true;
   }
 
@@ -316,13 +332,133 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     this.dbForceDefaultHat = force;
     try (Connection conn = DriverManager.getConnection(jdbcUrl);
          PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_settings (setting_key, setting_value) VALUES (?, ?)")) {
-      ps.setString(1, "default_hat");
-      ps.setString(2, this.dbDefaultHat);
-      ps.executeUpdate();
-      ps.setString(1, "force_default_hat");
-      ps.setString(2, String.valueOf(this.dbForceDefaultHat));
+      ps.setString(1, "default_hat"); ps.setString(2, this.dbDefaultHat); ps.executeUpdate();
+      ps.setString(1, "force_default_hat"); ps.setString(2, String.valueOf(this.dbForceDefaultHat)); ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  // --- KILLSOUND DB METHODS ---
+  public void createDbKillSoundGroup(String rawPerm) {
+    String perm = normalizePermNode(rawPerm);
+    if (!dbKillSoundGroups.containsKey(perm)) {
+      dbKillSoundGroups.put(perm, new LinkedHashSet<>());
+      saveDbKillSoundGroup(perm);
+    }
+  }
+
+  public void deleteDbKillSoundGroup(String permNode) {
+    String perm = permNode.trim().toLowerCase();
+    dbKillSoundGroups.remove(perm);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM killsound_groups WHERE perm_node = ?")) {
+      ps.setString(1, perm);
       ps.executeUpdate();
     } catch (Throwable ignored) {}
+  }
+
+  public boolean isKillSoundInDbGroup(String permNode, String soundId) {
+    Set<String> set = dbKillSoundGroups.get(permNode.toLowerCase());
+    return set != null && set.stream().anyMatch(s -> s.equalsIgnoreCase(soundId));
+  }
+
+  public boolean toggleKillSoundInDbGroup(String permNode, String soundId) {
+    String perm = permNode.trim().toLowerCase();
+    Set<String> set = dbKillSoundGroups.computeIfAbsent(perm, k -> new LinkedHashSet<>());
+    String existing = set.stream().filter(s -> s.equalsIgnoreCase(soundId)).findFirst().orElse(null);
+    boolean added;
+    if (existing != null) { set.remove(existing); added = false; }
+    else { set.add(soundId.trim()); added = true; }
+    saveDbKillSoundGroup(perm);
+    return added;
+  }
+
+  private void saveDbKillSoundGroup(String perm) {
+    String joined = String.join(",", dbKillSoundGroups.getOrDefault(perm, Collections.emptySet()));
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO killsound_groups (perm_node, sound_ids) VALUES (?, ?)")) {
+      ps.setString(1, perm);
+      ps.setString(2, joined);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void addKillSoundToDb(String soundId) {
+    String clean = soundId.trim();
+    if (dbKillSoundItems.stream().noneMatch(s -> s.equalsIgnoreCase(clean))) {
+      dbKillSoundItems.add(clean);
+      try (Connection conn = DriverManager.getConnection(jdbcUrl);
+           PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO killsound_items (sound_id, sort_order) VALUES (?, ?)")) {
+        ps.setString(1, clean);
+        ps.setInt(2, dbKillSoundItems.size());
+        ps.executeUpdate();
+      } catch (Throwable ignored) {}
+    }
+  }
+
+  public boolean removeKillSoundFromDb(String soundId) {
+    String matched = dbKillSoundItems.stream().filter(s -> s.equalsIgnoreCase(soundId)).findFirst().orElse(null);
+    if (matched == null) return false;
+    dbKillSoundItems.remove(matched);
+    dbKillSoundNames.remove(matched);
+    dbKillSoundLores.remove(matched);
+    for (Map.Entry<String, Set<String>> entry : dbKillSoundGroups.entrySet()) {
+      if (entry.getValue().removeIf(s -> s.equalsIgnoreCase(matched))) saveDbKillSoundGroup(entry.getKey());
+    }
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM killsound_items WHERE sound_id = ?")) {
+      ps.setString(1, matched);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+    if (matched.equalsIgnoreCase(dbDefaultKillSound)) setDefaultKillSoundInDb("", false);
+    return true;
+  }
+
+  public void setKillSoundNameInDb(String soundId, @Nullable String displayName) {
+    if (displayName == null || displayName.isBlank()) dbKillSoundNames.remove(soundId);
+    else dbKillSoundNames.put(soundId, displayName);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE killsound_items SET display_name = ? WHERE sound_id = ?")) {
+      ps.setString(1, displayName);
+      ps.setString(2, soundId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setKillSoundLoreInDb(String soundId, @Nullable List<String> lore) {
+    if (lore == null) dbKillSoundLores.remove(soundId);
+    else dbKillSoundLores.put(soundId, new ArrayList<>(lore));
+    String joined = lore == null ? null : String.join("\n", lore);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE killsound_items SET lore = ? WHERE sound_id = ?")) {
+      ps.setString(1, joined);
+      ps.setString(2, soundId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setDefaultKillSoundInDb(@Nullable String defaultSoundId, boolean force) {
+    this.dbDefaultKillSound = defaultSoundId == null ? "" : defaultSoundId.trim();
+    this.dbForceDefaultKillSound = force;
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_settings (setting_key, setting_value) VALUES (?, ?)")) {
+      ps.setString(1, "default_killsound"); ps.setString(2, this.dbDefaultKillSound); ps.executeUpdate();
+      ps.setString(1, "force_default_killsound"); ps.setString(2, String.valueOf(this.dbForceDefaultKillSound)); ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public List<String> getAllNexoSoundIds() {
+    List<String> soundIds = new ArrayList<>();
+    try {
+      File soundsFile = new File("plugins/Nexo/sounds.yml");
+      if (soundsFile.exists()) {
+        YamlConfiguration yml = YamlConfiguration.loadConfiguration(soundsFile);
+        for (Map<?, ?> map : yml.getMapList("sounds")) {
+          Object idObj = map.get("id");
+          if (idObj != null) soundIds.add(idObj.toString().trim());
+        }
+      }
+    } catch (Throwable ignored) {}
+    return soundIds;
   }
 
   private void registerCmd(String name) {
@@ -336,7 +472,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public void forceTakeoverCommands() {
     try {
       Map<String, Command> knownCommands = Bukkit.getCommandMap().getKnownCommands();
-      String[] cmds = {"antitrim", "decor", "trim", "hat", "rename"};
+      String[] cmds = {"antitrim", "decor", "trim", "hat", "killsound", "rename"};
       for (String name : cmds) {
         PluginCommand pc = getCommand(name);
         if (pc != null) {
@@ -580,6 +716,71 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     guiManager.openHatMenu(p, 0);
   }
 
+  public void handleKillSoundCommand(Player p, String[] args) {
+    if (args.length == 0) {
+      guiManager.openKillSoundMenu(p, 0);
+      return;
+    }
+    String sub = args[0].toLowerCase();
+    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
+        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
+      if (!hasAdminPerm(p)) {
+        p.sendMessage(getMessage("no-permission"));
+        return;
+      }
+      if (sub.equals("admin")) {
+        if (args.length == 1) {
+          guiManager.openKillSoundAdminMenu(p, 0);
+          return;
+        }
+        sub = args[1].toLowerCase();
+        args = Arrays.copyOfRange(args, 1, args.length);
+      }
+      if (sub.equals("groups") || sub.equals("group")) {
+        guiManager.openKillSoundGroupListMenu(p, 0);
+        return;
+      }
+      if (sub.equals("default") && args.length >= 2) {
+        String rawId = args[1].trim();
+        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
+          guiManager.setForceDefaultKillSound(p, null, false);
+        } else {
+          guiManager.setForceDefaultKillSound(p, rawId, true);
+        }
+        return;
+      }
+      if (sub.equals("add") && args.length >= 2) {
+        String rawId = args[1].trim();
+        if (getDbKillSoundItems().stream().anyMatch(s -> s.equalsIgnoreCase(rawId))) {
+          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
+          guiManager.openKillSoundEditorMenu(p, rawId);
+          return;
+        }
+        addKillSoundToDb(rawId);
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        p.sendMessage(getMessage("killsound-admin-added", Placeholder.unparsed("id", rawId)));
+        guiManager.openKillSoundEditorMenu(p, rawId);
+        return;
+      }
+      if (sub.equals("edit") && args.length >= 2) {
+        guiManager.openKillSoundEditorMenu(p, args[1].trim());
+        return;
+      }
+      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
+        if (removeKillSoundFromDb(args[1].trim())) {
+          p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+          p.sendMessage(getMessage("hat-admin-removed", Placeholder.unparsed("id", args[1].trim())));
+        }
+        guiManager.openKillSoundAdminMenu(p, 0);
+        return;
+      }
+      guiManager.openKillSoundAdminMenu(p, 0);
+      return;
+    }
+    guiManager.openKillSoundMenu(p, 0);
+  }
+
   @Override
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
     String cmdName = command.getName().toLowerCase();
@@ -598,6 +799,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       handleHatCommand(p, args);
       return true;
     }
+    if (cmdName.equals("killsound")) {
+      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
+      handleKillSoundCommand(p, args);
+      return true;
+    }
     if (cmdName.equals("rename")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
       if (args.length == 0) guiManager.openRenameMenu(p);
@@ -608,7 +814,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args[0].equalsIgnoreCase("reload")) {
         if (!hasAdminPerm(sender)) { sender.sendMessage(getMessage("no-permission")); return true; }
         reloadConfig();
-        loadHatsFromDatabase();
+        loadDatabase();
         forceTakeoverCommands();
         if (trimListener != null) {
           for (World world : Bukkit.getWorlds()) trimListener.lockAlwaysDaytime(world);
@@ -625,14 +831,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         guiManager.openHatGroupListMenu(p, 0);
         return true;
       }
-      if (args[0].equalsIgnoreCase("default") && args.length >= 2 && sender instanceof Player p) {
+      if ((args[0].equalsIgnoreCase("killsounds") || args[0].equalsIgnoreCase("ks")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        String rawId = args[1].trim();
-        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear")) {
-          guiManager.setForceDefaultHat(p, null, false);
-        } else {
-          guiManager.setForceDefaultHat(p, rawId, true);
-        }
+        guiManager.openKillSoundAdminMenu(p, 0);
         return true;
       }
       if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
@@ -649,14 +850,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
     String cmd = command.getName().toLowerCase();
     if (cmd.equals("antitrim") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("reload", "hats", "groups", "default");
-      if (args.length == 2 && args[0].equalsIgnoreCase("default")) {
-        String prefix = args[1].toLowerCase();
-        List<String> opts = new ArrayList<>(List.of("off", "none"));
-        opts.addAll(getDbHatItems());
-        opts.addAll(getAllNexoItemIds());
-        return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
-      }
+      if (args.length == 1) return List.of("reload", "hats", "killsounds", "groups");
     }
     if (cmd.equals("hat") && hasAdminPerm(sender)) {
       if (args.length == 1) {
@@ -666,9 +860,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
-        if (sub.equals("admin")) {
-          return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-        }
+        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
         if (sub.equals("add") || sub.equals("default")) {
           List<String> opts = new ArrayList<>();
           if (sub.equals("default")) opts.addAll(List.of("off", "none"));
@@ -677,6 +869,27 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         }
         if (sub.equals("edit") || sub.equals("remove")) {
           return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+        }
+      }
+    }
+    if (cmd.equals("killsound") && hasAdminPerm(sender)) {
+      if (args.length == 1) {
+        String prefix = args[0].toLowerCase();
+        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+      }
+      if (args.length == 2) {
+        String sub = args[0].toLowerCase();
+        String prefix = args[1].toLowerCase();
+        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+        if (sub.equals("add") || sub.equals("default")) {
+          List<String> opts = new ArrayList<>();
+          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
+          opts.addAll(getAllNexoSoundIds());
+          opts.addAll(getDbKillSoundItems());
+          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        }
+        if (sub.equals("edit") || sub.equals("remove")) {
+          return getDbKillSoundItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
         }
       }
     }
