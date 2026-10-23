@@ -8,9 +8,14 @@ gui:
   slot-title: "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>"
   hat-title: "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold> <#6c7086>(<page>/<max_page>)"
   hat-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold> <#6c7086>(<page>/<max_page>)"
-  hat-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Permission Groups</bold> <#6c7086>(<page>/<max_page>)"
+  hat-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Hat Perm Groups</bold> <#6c7086>(<page>/<max_page>)"
   hat-group-select-title: "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)"
   hat-editor-title: "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>"
+  killsound-title: "<white><sprite:items:item/music_disc_otherside></white> <#cba6f7><bold>KillSound Studio</bold> <#6c7086>(<page>/<max_page>)"
+  killsound-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin KillSound Manager</bold> <#6c7086>(<page>/<max_page>)"
+  killsound-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>KillSound Perm Groups</bold> <#6c7086>(<page>/<max_page>)"
+  killsound-group-select-title: "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>KS Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)"
+  killsound-editor-title: "<white><sprite:items:item/jukebox></white> <#cba6f7><bold>Edit KillSound:</bold> <#89dceb><id>"
   rename-title: "<white><sprite:items:item/name_tag></white> <#cba6f7><bold>Item Rename Studio</bold>"
   selected-status: "<#a6e3a1>● Selected"
   unselected-status: "<#6c7086>○ Unselected"
@@ -28,6 +33,11 @@ hats:
   hide-locked-hats: true
   items: []
   definitions: {}
+
+killsounds:
+  hide-locked-killsounds: true
+  volume: 1.0
+  pitch: 1.0
 
 rename:
   max-length: 48
@@ -51,26 +61,31 @@ messages:
   hat-admin-cancelled: "<#a6adc8>Operation cancelled."
   hat-admin-added: "<#a6e3a1>Added Nexo hat <#89dceb><id><#a6e3a1>."
   hat-admin-added-invalid: "<#fab387>Added <#f38ba8><id><#fab387>, but it was not found in Nexo."
-  hat-admin-exists: "<#f38ba8>Hat <#f9e2af><id><#f38ba8> already exists."
-  hat-admin-removed: "<#f38ba8>Removed hat <#f9e2af><id><#f38ba8>."
+  hat-admin-exists: "<#f38ba8>Entry <#f9e2af><id><#f38ba8> already exists."
+  hat-admin-removed: "<#f38ba8>Removed <#f9e2af><id><#f38ba8>."
   hat-admin-name-updated: "<#a6e3a1>Updated display name for <#89dceb><id><#a6e3a1> to <name><#a6e3a1>."
   hat-admin-name-reset: "<#cdd6f4>Reset display name for <#89dceb><id><#cdd6f4>."
   hat-admin-lore-updated: "<#a6e3a1>Updated lore for <#89dceb><id><#a6e3a1>."
   hat-admin-lore-reset: "<#cdd6f4>Cleared custom lore for <#89dceb><id><#cdd6f4>."
   hat-admin-group-created: "<#a6e3a1>Created permission group <#f9e2af><perm><#a6e3a1>."
   hat-admin-group-deleted: "<#f38ba8>Deleted permission group <#f9e2af><perm><#f38ba8>."
-  hat-admin-group-hat-added: "<#a6e3a1>Added hat <#89dceb><id><#a6e3a1> to permission <#f9e2af><perm><#a6e3a1>."
-  hat-admin-group-hat-removed: "<#fab387>Removed hat <#89dceb><id><#fab387> from permission <#f9e2af><perm><#fab387>."
-  hat-admin-default-set: "<#a6e3a1>Set forced default hat to <#89dceb><id><#a6e3a1>."
-  hat-admin-default-cleared: "<#fab387>Disabled forced default hat."
-  hat-admin-default-toggled: "<#cdd6f4>Force Default Hat is now <state><#cdd6f4>."
+  hat-admin-group-hat-added: "<#a6e3a1>Added <#89dceb><id><#a6e3a1> to permission <#f9e2af><perm><#a6e3a1>."
+  hat-admin-group-hat-removed: "<#fab387>Removed <#89dceb><id><#fab387> from permission <#f9e2af><perm><#fab387>."
+  hat-admin-default-set: "<#a6e3a1>Set forced default to <#89dceb><id><#a6e3a1>."
+  hat-admin-default-cleared: "<#fab387>Disabled forced default."
+  hat-admin-default-toggled: "<#cdd6f4>Force Default is now <state><#cdd6f4>."
+  killsound-selected: "<white><sprite:items:item/music_disc_otherside></white> <#cdd6f4>Selected KillSound <sound><#cdd6f4>."
+  killsound-preview: "<white><sprite:items:item/note_block></white> <#cdd6f4>Playing preview for <sound><#cdd6f4>..."
+  killsound-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Disabled active KillSound."
+  killsound-admin-prompt-id: "<white><sprite:items:item/jukebox></white> <#cdd6f4>Type the <#89dceb>Nexo Sound ID<#cdd6f4> in chat (from <#f9e2af>Nexo/sounds.yml<#cdd6f4>, e.g. <#a6e3a1>nexo:mysound<#cdd6f4>), or type <#f38ba8>cancel<#cdd6f4>."
+  killsound-admin-added: "<#a6e3a1>Added Nexo KillSound <#89dceb><id><#a6e3a1>."
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
   rename-cancelled: "<#a6adc8>Item rename cancelled."
   rename-no-item: "<#f38ba8>Hold an item in your <#f9e2af>Main Hand<#f38ba8> to rename it."
   rename-too-long: "<#f38ba8>Name is too long (Max <#f9e2af><max><#f38ba8> characters)."
   rename-success: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Renamed item to <name><#cdd6f4>."
   rename-reset: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Reset item name to default."
-  reload-success: "<#a6e3a1>Configuration & SQLite Hat Database reloaded."
+  reload-success: "<#a6e3a1>Configuration & SQLite Database reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | groups | default <id|off>"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | killsounds | groups"
