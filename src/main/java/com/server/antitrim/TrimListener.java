@@ -90,6 +90,15 @@ public class TrimListener implements Listener {
       return;
     }
 
+    if (lower.equals("/killsound") || lower.startsWith("/killsound ") || lower.equals("/ks") || lower.startsWith("/ks ")
+        || lower.equals("/killsounds") || lower.startsWith("/killsounds ")) {
+      event.setCancelled(true);
+      String[] parts = msg.split("\\s+");
+      String[] args = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
+      plugin.handleKillSoundCommand(player, args);
+      return;
+    }
+
     String cmdToken = lower.split("\\s+")[0];
     if (cmdToken.contains(":")) cmdToken = "/" + cmdToken.substring(cmdToken.indexOf(':') + 1);
     if (cmdToken.startsWith("/kit") || cmdToken.equals("/k") || cmdToken.matches("/k[1-9]")
@@ -189,6 +198,7 @@ public class TrimListener implements Listener {
     });
   }
 
+  // Khoi phuc mu goc khi chet va phat Nexo KillSound neu bi nguoi choi khac ha guc
   @EventHandler(priority = EventPriority.LOWEST)
   public void onDeath(PlayerDeathEvent event) {
     List<ItemStack> drops = event.getDrops();
@@ -196,7 +206,13 @@ public class TrimListener implements Listener {
       ItemStack drop = drops.get(i);
       if (guiManager.isCustomHatItem(drop)) drops.set(i, guiManager.restoreOriginalHelmet(drop));
     }
-    guiManager.restoreAllCustomHatsInInventory(event.getPlayer());
+    Player victim = event.getPlayer();
+    guiManager.restoreAllCustomHatsInInventory(victim);
+
+    Player killer = victim.getKiller();
+    if (killer != null && !killer.equals(victim)) {
+      guiManager.playNexoKillSound(killer, victim);
+    }
   }
 
   @EventHandler(priority = EventPriority.HIGHEST)
