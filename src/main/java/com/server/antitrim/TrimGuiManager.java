@@ -8,6 +8,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
@@ -285,21 +286,45 @@ public class TrimGuiManager implements Listener {
   public void playNexoKillSound(Player killer, Player victim) {
     String soundId = getEffectiveKillSoundId(killer);
     if (soundId == null || soundId.isBlank()) return;
+    String cleanSoundId = soundId.trim().toLowerCase();
     float vol = (float) plugin.getConfig().getDouble("killsounds.volume", 1.0);
     float pitch = (float) plugin.getConfig().getDouble("killsounds.pitch", 1.0);
-    try {
-      victim.getWorld().playSound(victim.getLocation(), soundId, SoundCategory.PLAYERS, vol, pitch);
-      if (killer.getWorld().equals(victim.getWorld()) && killer.getLocation().distanceSquared(victim.getLocation()) > 256) {
-        killer.playSound(killer.getLocation(), soundId, SoundCategory.PLAYERS, vol, pitch);
-      }
-    } catch (Throwable ignored) {}
+    Location deathLoc = victim.getLocation().clone();
+
+    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+      try {
+        if (killer.isOnline()) {
+          killer.stopSound(cleanSoundId, SoundCategory.MASTER);
+          killer.stopSound(cleanSoundId, SoundCategory.PLAYERS);
+          killer.playSound(killer, cleanSoundId, SoundCategory.MASTER, vol, pitch);
+        }
+        if (victim.isOnline() && !victim.equals(killer)) {
+          victim.stopSound(cleanSoundId, SoundCategory.MASTER);
+          victim.stopSound(cleanSoundId, SoundCategory.PLAYERS);
+          victim.playSound(victim, cleanSoundId, SoundCategory.MASTER, vol, pitch);
+        }
+        if (deathLoc.getWorld() != null) {
+          for (Player nearby : deathLoc.getWorld().getPlayers()) {
+            if (nearby.equals(killer) || nearby.equals(victim)) continue;
+            if (nearby.getLocation().distanceSquared(deathLoc) <= 256) {
+              nearby.stopSound(cleanSoundId, SoundCategory.MASTER);
+              nearby.playSound(deathLoc, cleanSoundId, SoundCategory.MASTER, vol, pitch);
+            }
+          }
+        }
+      } catch (Throwable ignored) {}
+    }, 1L);
   }
 
   public void playPreviewKillSound(Player player, String soundId) {
+    if (soundId == null || soundId.isBlank()) return;
+    String cleanSoundId = soundId.trim().toLowerCase();
     float vol = (float) plugin.getConfig().getDouble("killsounds.volume", 1.0);
     float pitch = (float) plugin.getConfig().getDouble("killsounds.pitch", 1.0);
     try {
-      player.playSound(player.getLocation(), soundId, SoundCategory.PLAYERS, vol, pitch);
+      player.stopSound(cleanSoundId, SoundCategory.MASTER);
+      player.stopSound(cleanSoundId, SoundCategory.PLAYERS);
+      player.playSound(player, cleanSoundId, SoundCategory.MASTER, vol, pitch);
     } catch (Throwable ignored) {}
   }
 
