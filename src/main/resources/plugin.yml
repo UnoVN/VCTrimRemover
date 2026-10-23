@@ -4,7 +4,7 @@ main: com.server.antitrim.AntiArmorTrim
 api-version: '1.21'
 author: LeThienNhan
 softdepend: [LuckPerms, Nexo, Essentials, PerPlayerKit]
-description: Catppuccin Decoration Studio - Armor Trim, Nexo Custom Hats & Item Rename.
+description: Catppuccin Decoration Studio - Armor Trim, Nexo Custom Hats, KillSounds & Item Rename.
 
 commands:
   antitrim:
@@ -19,6 +19,9 @@ commands:
   hat:
     description: Open the Custom Hat Studio GUI
     aliases: [hats, customhat]
+  killsound:
+    description: Open the KillSound Studio GUI
+    aliases: [ks, killsounds]
   rename:
     description: Open the Item Rename Studio GUI or rename held item
     aliases: [itemrename]
@@ -30,9 +33,12 @@ permissions:
   armortrim.hat:
     description: Allows equipping general Nexo Custom Hats on Diamond and Netherite helmets.
     default: op
+  armortrim.killsound:
+    description: Allows equipping general Nexo KillSounds.
+    default: op
   armortrim.rename:
     description: Allows renaming items via the Rename Studio GUI or command.
     default: op
   armortrim.admin:
-    description: Allows reloading config and managing Custom Hats via Admin GUI.
+    description: Allows reloading config and managing Custom Hats & KillSounds via Admin GUI.
     default: op
