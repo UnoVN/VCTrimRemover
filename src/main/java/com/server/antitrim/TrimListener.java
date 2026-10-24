@@ -38,6 +38,7 @@ import org.bukkit.inventory.meta.ArmorMeta;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.List;
 
 public class TrimListener implements Listener {
 
@@ -240,7 +241,6 @@ public class TrimListener implements Listener {
         plugin.getKillEffectManager().playModelEngineKillEffect(killer, victim);
         plugin.getKillSoundManager().playNexoKillSound(killer, victim);
       }
-      // Định dạng hiển thị tên vũ khí đã rename cho cả PvP lẫn khi bạn tự test nổ chính mình
       plugin.getCombatTracker().formatDeathMessageWeapon(event, killer);
     }
     plugin.getCombatTracker().clearVictimRecord(victim.getUniqueId());
@@ -467,7 +467,6 @@ public class TrimListener implements Listener {
         event.getItem().setItemStack(picked);
       }
 
-      // Tự động xóa vĩnh viễn item rename trên đất nếu người nhặt không có quyền
       if (!plugin.getRenameManager().canUseRename(player) && plugin.getRenameManager().isPluginRenamedItem(picked)) {
         event.setCancelled(true);
         event.getItem().remove();
