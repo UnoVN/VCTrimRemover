@@ -41,30 +41,48 @@ public class DecorHubGui implements Listener {
     ItemStack border = TrimMenuHolder.createFiller(plugin, Material.GRAY_STAINED_GLASS_PANE);
     for (int i = 0; i < 27; i++) inv.setItem(i, border);
 
-    // Slot 9 - Armor Trim Studio
-    List<Component> trimLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Customize automatic armor trims"), plugin.parse("<#a6adc8>and materials for your gear.")));
+    // Slot 10 - Armor Trim Studio
+    List<Component> trimLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Customize automatic armor trims"),
+        plugin.parse("<#a6adc8>and materials for your gear.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, trimLore, AntiArmorTrim.BYPASS_PERM);
-    inv.setItem(9, TrimMenuHolder.createStyledButton(plugin, Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE, "<#cba6f7><bold>Armor Trim Studio</bold>", trimLore));
+    inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE, "<#cba6f7><bold>Armor Trim Studio</bold>", trimLore));
 
     // Slot 11 - Custom Hat Studio
-    List<Component> hatLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Transform your Diamond or Netherite"), plugin.parse("<#a6adc8>helmet into a custom Nexo hat.")));
+    List<Component> hatLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Transform your Diamond or Netherite"),
+        plugin.parse("<#a6adc8>helmet into a custom Nexo hat.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, hatLore, AntiArmorTrim.HAT_PERM);
     inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.NETHERITE_HELMET, "<#f9e2af><bold>Custom Hat Studio</bold>", hatLore));
 
-    // Slot 13 - 3D KillEffect Studio (ModelEngine 4)
-    List<Component> keLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Choose a 3D animated ModelEngine"), plugin.parse("<#a6adc8>effect when eliminating players.")));
-    TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, keLore, AntiArmorTrim.KILLEFFECT_PERM);
-    inv.setItem(13, TrimMenuHolder.createStyledButton(plugin, Material.TOTEM_OF_UNDYING, "<#eba0ac><bold>KillEffect Studio</bold>", keLore));
+    // Slot 12 - Classic Kill Effect (Chạy lệnh /killeffects của plugin thứ 3)
+    List<Component> classicKeLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Select classic particle effects"),
+        plugin.parse("<#a6adc8>from the server's classic plugin."),
+        Component.empty(),
+        plugin.parse("<#89dceb>Click: <#cdd6f4>Run /killeffects")));
+    inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.FIREWORK_ROCKET, "<#fab387><bold>Classic KillEffect</bold>", classicKeLore));
+
+    // Slot 14 - 3D KillEffect Studio (Mô hình 3D ModelEngine 4 của plugin này)
+    List<Component> ke3dLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Choose an animated 3D model effect"),
+        plugin.parse("<#a6adc8>with victim skin & custom particles.")));
+    TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, ke3dLore, AntiArmorTrim.KILLEFFECT_PERM);
+    inv.setItem(14, TrimMenuHolder.createStyledButton(plugin, Material.TOTEM_OF_UNDYING, "<#eba0ac><bold>3D KillEffect Studio</bold>", ke3dLore));
 
     // Slot 15 - KillSound Studio
-    List<Component> ksLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Select a custom Nexo sound effect"), plugin.parse("<#a6adc8>played when you eliminate a player.")));
+    List<Component> ksLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Select a custom Nexo sound effect"),
+        plugin.parse("<#a6adc8>played when you eliminate a player.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, ksLore, AntiArmorTrim.KILLSOUND_PERM);
     inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.MUSIC_DISC_OTHERSIDE, "<#a6e3a1><bold>KillSound Studio</bold>", ksLore));
 
-    // Slot 17 - Item Rename Studio
-    List<Component> renameLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Rename the item in your main hand"), plugin.parse("<#a6adc8>using Minecraft color & format codes.")));
+    // Slot 16 - Item Rename Studio
+    List<Component> renameLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>Rename the item in your main hand"),
+        plugin.parse("<#a6adc8>using Minecraft color & format codes.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, renameLore, AntiArmorTrim.RENAME_PERM);
-    inv.setItem(17, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#74c7ec><bold>Item Rename Studio</bold>", renameLore));
+    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#74c7ec><bold>Item Rename Studio</bold>", renameLore));
 
     player.openInventory(inv);
   }
@@ -77,19 +95,25 @@ public class DecorHubGui implements Listener {
     if (!(event.getWhoClicked() instanceof Player player)) return;
 
     int slot = event.getRawSlot();
-    if (slot == 9) {
+    if (slot == 10) {
       player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
       TrimStudioGui.openMain(plugin, player);
     } else if (slot == 11) {
       player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
       HatStudioGui.openPlayerMenu(plugin, player, 0);
-    } else if (slot == 13) {
+    } else if (slot == 12) {
+      // Classic Kill Effect: Đóng menu và cho người chơi thực thi lệnh /killeffects có sẵn
+      player.closeInventory();
+      player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+      player.performCommand("killeffects");
+    } else if (slot == 14) {
+      // 3D Kill Effect Studio: Mở menu 3D của ModelEngine
       player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
       KillEffectStudioGui.openPlayerMenu(plugin, player, 0);
     } else if (slot == 15) {
       player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
       KillSoundStudioGui.openPlayerMenu(plugin, player, 0);
-    } else if (slot == 17) {
+    } else if (slot == 16) {
       player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
       RenameStudioGui.open(plugin, player);
     }
