@@ -57,6 +57,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public static final String BYPASS_PERM = "armortrim.bypass";
   public static final String HAT_PERM = "armortrim.hat";
+  public static final String KILLEFFECT_PERM = "armortrim.killeffect";
   public static final String KILLSOUND_PERM = "armortrim.killsound";
   public static final String RENAME_PERM = "armortrim.rename";
   public static final String ADMIN_PERM = "armortrim.admin";
@@ -76,6 +77,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private final Map<String, Set<String>> dbPermGroups = new LinkedHashMap<>();
   private boolean dbForceDefaultHat = false;
   private String dbDefaultHat = "";
+
+  private final List<String> dbKillEffectItems = new ArrayList<>();
+  private final Map<String, String> dbKillEffectNames = new LinkedHashMap<>();
+  private final Map<String, List<String>> dbKillEffectLores = new LinkedHashMap<>();
+  private final Map<String, Set<String>> dbKillEffectGroups = new LinkedHashMap<>();
+  private boolean dbForceDefaultKillEffect = false;
+  private String dbDefaultKillEffect = "";
 
   private final List<String> dbKillSoundItems = new ArrayList<>();
   private final Map<String, String> dbKillSoundNames = new LinkedHashMap<>();
@@ -97,10 +105,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     registerCmd("decor");
     registerCmd("trim");
     registerCmd("hat");
+    registerCmd("killeffect");
     registerCmd("killsound");
     registerCmd("rename");
     Bukkit.getScheduler().runTaskLater(this, this::forceTakeoverCommands, 20L);
-    getLogger().info("AntiArmorTrim v2.5.0 (Catppuccin + SQLite Nexo Hats & KillSounds) enabled!");
+    getLogger().info("AntiArmorTrim v2.6.0 (Catppuccin + SQLite Hats, ModelEngine KillEffects & KillSounds) enabled!");
   }
 
   public void initDatabase() {
@@ -113,6 +122,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_items (hat_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS hat_groups (perm_node TEXT PRIMARY KEY, hat_ids TEXT)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS killeffect_items (effect_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
+        st.executeUpdate("CREATE TABLE IF NOT EXISTS killeffect_groups (perm_node TEXT PRIMARY KEY, effect_ids TEXT)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS killsound_items (sound_id TEXT PRIMARY KEY, display_name TEXT, lore TEXT, sort_order INTEGER)");
         st.executeUpdate("CREATE TABLE IF NOT EXISTS killsound_groups (perm_node TEXT PRIMARY KEY, sound_ids TEXT)");
       }
@@ -134,8 +145,32 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           setDefaultHatInDb(cfgDef, cfgForce);
         }
       }
+
+      if (dbKillEffectItems.isEmpty()) {
+        seedDefaultEliteCreaturesKillEffects();
+      }
     } catch (Throwable e) {
       getLogger().warning("Failed to initialize SQLite database: " + e.getMessage());
+    }
+  }
+
+  private void seedDefaultEliteCreaturesKillEffects() {
+    String[][] defaults = {
+        {"kfx_acidic_corrosion", "<#a6e3a1><bold>Acidic Corrosion</bold>", "<#a6adc8>Dissolves your victim in toxic acid."},
+        {"kfx_clockwork_disassembly", "<#f9e2af><bold>Clockwork Disassembly</bold>", "<#a6adc8>Shatters your victim into golden gears."},
+        {"kfx_frost_infection", "<#89dceb><bold>Frost Infection</bold>", "<#a6adc8>Freezes and shatters your victim in blue ice."},
+        {"kfx_abstracted", "<#cba6f7><bold>Abstracted</bold>", "<#a6adc8>Warps your victim into a glitching dimension."},
+        {"kfx_graffiti_spray", "<#f38ba8><bold>Graffiti Spray</bold>", "<#a6adc8>Blasts your victim into street art smoke."},
+        {"kfx_origami_fold", "<#f5c2e7><bold>Origami Fold</bold>", "<#a6adc8>Folds your victim into paper origami."},
+        {"kfx_plasma_orb", "<#74c7ec><bold>Plasma Orb</bold>", "<#a6adc8>Engulfs your victim in an unstable plasma sphere."},
+        {"kfx_magnetic_resonance", "<#eba0ac><bold>Magnetic Resonance</bold>", "<#a6adc8>Tears your victim apart with magnetic waves."},
+        {"kfx_ink_blots", "<#89b4fa><bold>Ink Blots</bold>", "<#a6adc8>Splashes your victim into dark ink puddles."},
+        {"kfx_pure_form", "<#fab387><bold>Pure Form</bold>", "<#a6adc8>Ascends your victim into pure celestial energy."}
+    };
+    for (String[] entry : defaults) {
+      addKillEffectToDb(entry[0]);
+      setKillEffectNameInDb(entry[0], entry[1]);
+      setKillEffectLoreInDb(entry[0], List.of(entry[2]));
     }
   }
 
@@ -144,6 +179,10 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     dbHatNames.clear();
     dbHatLores.clear();
     dbPermGroups.clear();
+    dbKillEffectItems.clear();
+    dbKillEffectNames.clear();
+    dbKillEffectLores.clear();
+    dbKillEffectGroups.clear();
     dbKillSoundItems.clear();
     dbKillSoundNames.clear();
     dbKillSoundLores.clear();
@@ -171,6 +210,29 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
             for (String s : rawIds.split(",")) if (!s.isBlank()) set.add(s.trim());
           }
           if (perm != null && !perm.isBlank()) dbPermGroups.put(perm.trim().toLowerCase(), set);
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT effect_id, display_name, lore FROM killeffect_items ORDER BY sort_order ASC, rowid ASC")) {
+        while (rs.next()) {
+          String id = rs.getString("effect_id");
+          String name = rs.getString("display_name");
+          String loreRaw = rs.getString("lore");
+          dbKillEffectItems.add(id);
+          if (name != null && !name.isBlank()) dbKillEffectNames.put(id, name);
+          if (loreRaw != null) {
+            dbKillEffectLores.put(id, loreRaw.isEmpty() ? new ArrayList<>() : new ArrayList<>(Arrays.asList(loreRaw.split("\n", -1))));
+          }
+        }
+      }
+      try (ResultSet rs = st.executeQuery("SELECT perm_node, effect_ids FROM killeffect_groups ORDER BY rowid ASC")) {
+        while (rs.next()) {
+          String perm = rs.getString("perm_node");
+          String rawIds = rs.getString("effect_ids");
+          Set<String> set = new LinkedHashSet<>();
+          if (rawIds != null && !rawIds.isBlank()) {
+            for (String s : rawIds.split(",")) if (!s.isBlank()) set.add(s.trim());
+          }
+          if (perm != null && !perm.isBlank()) dbKillEffectGroups.put(perm.trim().toLowerCase(), set);
         }
       }
       try (ResultSet rs = st.executeQuery("SELECT sound_id, display_name, lore FROM killsound_items ORDER BY sort_order ASC, rowid ASC")) {
@@ -202,6 +264,8 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           String v = rs.getString("setting_value");
           if ("force_default_hat".equalsIgnoreCase(k)) dbForceDefaultHat = Boolean.parseBoolean(v);
           else if ("default_hat".equalsIgnoreCase(k)) dbDefaultHat = v != null ? v : "";
+          else if ("force_default_killeffect".equalsIgnoreCase(k)) dbForceDefaultKillEffect = Boolean.parseBoolean(v);
+          else if ("default_killeffect".equalsIgnoreCase(k)) dbDefaultKillEffect = v != null ? v : "";
           else if ("force_default_killsound".equalsIgnoreCase(k)) dbForceDefaultKillSound = Boolean.parseBoolean(v);
           else if ("default_killsound".equalsIgnoreCase(k)) dbDefaultKillSound = v != null ? v : "";
         }
@@ -215,6 +279,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   @Nullable public List<String> getDbHatLore(String hatId) { return dbHatLores.get(hatId); }
   public boolean isDbForceDefaultHat() { return dbForceDefaultHat; }
   @Nullable public String getDbDefaultHat() { return (dbDefaultHat == null || dbDefaultHat.isBlank()) ? null : dbDefaultHat.trim(); }
+
+  public List<String> getDbKillEffectItems() { return Collections.unmodifiableList(dbKillEffectItems); }
+  public Map<String, Set<String>> getDbKillEffectGroups() { return Collections.unmodifiableMap(dbKillEffectGroups); }
+  @Nullable public String getDbKillEffectDisplayName(String effectId) { return dbKillEffectNames.get(effectId); }
+  @Nullable public List<String> getDbKillEffectLore(String effectId) { return dbKillEffectLores.get(effectId); }
+  public boolean isDbForceDefaultKillEffect() { return dbForceDefaultKillEffect; }
+  @Nullable public String getDbDefaultKillEffect() { return (dbDefaultKillEffect == null || dbDefaultKillEffect.isBlank()) ? null : dbDefaultKillEffect.trim(); }
 
   public List<String> getDbKillSoundItems() { return Collections.unmodifiableList(dbKillSoundItems); }
   public Map<String, Set<String>> getDbKillSoundGroups() { return Collections.unmodifiableMap(dbKillSoundGroups); }
@@ -335,6 +406,136 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       ps.setString(1, "default_hat"); ps.setString(2, this.dbDefaultHat); ps.executeUpdate();
       ps.setString(1, "force_default_hat"); ps.setString(2, String.valueOf(this.dbForceDefaultHat)); ps.executeUpdate();
     } catch (Throwable ignored) {}
+  }
+
+  // --- KILLEFFECT DB METHODS ---
+  public void createDbKillEffectGroup(String rawPerm) {
+    String perm = normalizePermNode(rawPerm);
+    if (!dbKillEffectGroups.containsKey(perm)) {
+      dbKillEffectGroups.put(perm, new LinkedHashSet<>());
+      saveDbKillEffectGroup(perm);
+    }
+  }
+
+  public void deleteDbKillEffectGroup(String permNode) {
+    String perm = permNode.trim().toLowerCase();
+    dbKillEffectGroups.remove(perm);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM killeffect_groups WHERE perm_node = ?")) {
+      ps.setString(1, perm);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public boolean isKillEffectInDbGroup(String permNode, String effectId) {
+    Set<String> set = dbKillEffectGroups.get(permNode.toLowerCase());
+    return set != null && set.stream().anyMatch(s -> s.equalsIgnoreCase(effectId));
+  }
+
+  public boolean toggleKillEffectInDbGroup(String permNode, String effectId) {
+    String perm = permNode.trim().toLowerCase();
+    Set<String> set = dbKillEffectGroups.computeIfAbsent(perm, k -> new LinkedHashSet<>());
+    String existing = set.stream().filter(s -> s.equalsIgnoreCase(effectId)).findFirst().orElse(null);
+    boolean added;
+    if (existing != null) { set.remove(existing); added = false; }
+    else { set.add(effectId.trim()); added = true; }
+    saveDbKillEffectGroup(perm);
+    return added;
+  }
+
+  private void saveDbKillEffectGroup(String perm) {
+    String joined = String.join(",", dbKillEffectGroups.getOrDefault(perm, Collections.emptySet()));
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO killeffect_groups (perm_node, effect_ids) VALUES (?, ?)")) {
+      ps.setString(1, perm);
+      ps.setString(2, joined);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void addKillEffectToDb(String effectId) {
+    String clean = effectId.trim();
+    if (dbKillEffectItems.stream().noneMatch(s -> s.equalsIgnoreCase(clean))) {
+      dbKillEffectItems.add(clean);
+      try (Connection conn = DriverManager.getConnection(jdbcUrl);
+           PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO killeffect_items (effect_id, sort_order) VALUES (?, ?)")) {
+        ps.setString(1, clean);
+        ps.setInt(2, dbKillEffectItems.size());
+        ps.executeUpdate();
+      } catch (Throwable ignored) {}
+    }
+  }
+
+  public boolean removeKillEffectFromDb(String effectId) {
+    String matched = dbKillEffectItems.stream().filter(s -> s.equalsIgnoreCase(effectId)).findFirst().orElse(null);
+    if (matched == null) return false;
+    dbKillEffectItems.remove(matched);
+    dbKillEffectNames.remove(matched);
+    dbKillEffectLores.remove(matched);
+    for (Map.Entry<String, Set<String>> entry : dbKillEffectGroups.entrySet()) {
+      if (entry.getValue().removeIf(s -> s.equalsIgnoreCase(matched))) saveDbKillEffectGroup(entry.getKey());
+    }
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("DELETE FROM killeffect_items WHERE effect_id = ?")) {
+      ps.setString(1, matched);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+    if (matched.equalsIgnoreCase(dbDefaultKillEffect)) setDefaultKillEffectInDb("", false);
+    return true;
+  }
+
+  public void setKillEffectNameInDb(String effectId, @Nullable String displayName) {
+    if (displayName == null || displayName.isBlank()) dbKillEffectNames.remove(effectId);
+    else dbKillEffectNames.put(effectId, displayName);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE killeffect_items SET display_name = ? WHERE effect_id = ?")) {
+      ps.setString(1, displayName);
+      ps.setString(2, effectId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setKillEffectLoreInDb(String effectId, @Nullable List<String> lore) {
+    if (lore == null) dbKillEffectLores.remove(effectId);
+    else dbKillEffectLores.put(effectId, new ArrayList<>(lore));
+    String joined = lore == null ? null : String.join("\n", lore);
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("UPDATE killeffect_items SET lore = ? WHERE effect_id = ?")) {
+      ps.setString(1, joined);
+      ps.setString(2, effectId);
+      ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public void setDefaultKillEffectInDb(@Nullable String defaultEffectId, boolean force) {
+    this.dbDefaultKillEffect = defaultEffectId == null ? "" : defaultEffectId.trim();
+    this.dbForceDefaultKillEffect = force;
+    try (Connection conn = DriverManager.getConnection(jdbcUrl);
+         PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO hat_settings (setting_key, setting_value) VALUES (?, ?)")) {
+      ps.setString(1, "default_killeffect"); ps.setString(2, this.dbDefaultKillEffect); ps.executeUpdate();
+      ps.setString(1, "force_default_killeffect"); ps.setString(2, String.valueOf(this.dbForceDefaultKillEffect)); ps.executeUpdate();
+    } catch (Throwable ignored) {}
+  }
+
+  public List<String> getAllModelEngineBlueprintIds() {
+    Set<String> ids = new LinkedHashSet<>();
+    File bpFolder = new File("plugins/ModelEngine/blueprints");
+    if (bpFolder.exists()) scanBlueprintFiles(bpFolder, ids);
+    ids.addAll(dbKillEffectItems);
+    return new ArrayList<>(ids);
+  }
+
+  private void scanBlueprintFiles(File dir, Set<String> out) {
+    File[] files = dir.listFiles();
+    if (files == null) return;
+    for (File f : files) {
+      if (f.isDirectory()) {
+        scanBlueprintFiles(f, out);
+      } else if (f.getName().toLowerCase().endsWith(".bbmodel")) {
+        String name = f.getName().substring(0, f.getName().length() - 8).trim().toLowerCase();
+        if (!name.isEmpty()) out.add(name);
+      }
+    }
   }
 
   // --- KILLSOUND DB METHODS ---
@@ -472,7 +673,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public void forceTakeoverCommands() {
     try {
       Map<String, Command> knownCommands = Bukkit.getCommandMap().getKnownCommands();
-      String[] cmds = {"antitrim", "decor", "trim", "hat", "killsound", "rename"};
+      String[] cmds = {"antitrim", "decor", "trim", "hat", "killeffect", "killsound", "rename"};
       for (String name : cmds) {
         PluginCommand pc = getCommand(name);
         if (pc != null) {
@@ -495,6 +696,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   @Override
   public void onDisable() {
     if (guiManager != null) {
+      guiManager.cleanupAllActiveKillEffectEntities();
       for (Player player : Bukkit.getOnlinePlayers()) {
         guiManager.restoreAllCustomHatsInInventory(player);
       }
@@ -716,6 +918,71 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     guiManager.openHatMenu(p, 0);
   }
 
+  public void handleKillEffectCommand(Player p, String[] args) {
+    if (args.length == 0) {
+      guiManager.openKillEffectMenu(p, 0);
+      return;
+    }
+    String sub = args[0].toLowerCase();
+    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
+        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
+      if (!hasAdminPerm(p)) {
+        p.sendMessage(getMessage("no-permission"));
+        return;
+      }
+      if (sub.equals("admin")) {
+        if (args.length == 1) {
+          guiManager.openKillEffectAdminMenu(p, 0);
+          return;
+        }
+        sub = args[1].toLowerCase();
+        args = Arrays.copyOfRange(args, 1, args.length);
+      }
+      if (sub.equals("groups") || sub.equals("group")) {
+        guiManager.openKillEffectGroupListMenu(p, 0);
+        return;
+      }
+      if (sub.equals("default") && args.length >= 2) {
+        String rawId = args[1].trim();
+        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
+          guiManager.setForceDefaultKillEffect(p, null, false);
+        } else {
+          guiManager.setForceDefaultKillEffect(p, rawId, true);
+        }
+        return;
+      }
+      if (sub.equals("add") && args.length >= 2) {
+        String rawId = args[1].trim();
+        if (getDbKillEffectItems().stream().anyMatch(s -> s.equalsIgnoreCase(rawId))) {
+          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
+          guiManager.openKillEffectEditorMenu(p, rawId);
+          return;
+        }
+        addKillEffectToDb(rawId);
+        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        p.sendMessage(getMessage("killeffect-admin-added", Placeholder.unparsed("id", rawId)));
+        guiManager.openKillEffectEditorMenu(p, rawId);
+        return;
+      }
+      if (sub.equals("edit") && args.length >= 2) {
+        guiManager.openKillEffectEditorMenu(p, args[1].trim());
+        return;
+      }
+      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
+        if (removeKillEffectFromDb(args[1].trim())) {
+          p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+          p.sendMessage(getMessage("hat-admin-removed", Placeholder.unparsed("id", args[1].trim())));
+        }
+        guiManager.openKillEffectAdminMenu(p, 0);
+        return;
+      }
+      guiManager.openKillEffectAdminMenu(p, 0);
+      return;
+    }
+    guiManager.openKillEffectMenu(p, 0);
+  }
+
   public void handleKillSoundCommand(Player p, String[] args) {
     if (args.length == 0) {
       guiManager.openKillSoundMenu(p, 0);
@@ -799,6 +1066,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       handleHatCommand(p, args);
       return true;
     }
+    if (cmdName.equals("killeffect")) {
+      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
+      handleKillEffectCommand(p, args);
+      return true;
+    }
     if (cmdName.equals("killsound")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
       handleKillSoundCommand(p, args);
@@ -831,6 +1103,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         guiManager.openHatGroupListMenu(p, 0);
         return true;
       }
+      if ((args[0].equalsIgnoreCase("killeffects") || args[0].equalsIgnoreCase("ke") || args[0].equalsIgnoreCase("kfx")) && sender instanceof Player p) {
+        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
+        guiManager.openKillEffectAdminMenu(p, 0);
+        return true;
+      }
       if ((args[0].equalsIgnoreCase("killsounds") || args[0].equalsIgnoreCase("ks")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
         guiManager.openKillSoundAdminMenu(p, 0);
@@ -850,7 +1127,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
     String cmd = command.getName().toLowerCase();
     if (cmd.equals("antitrim") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("reload", "hats", "killsounds", "groups");
+      if (args.length == 1) return List.of("reload", "hats", "killeffects", "killsounds", "groups");
     }
     if (cmd.equals("hat") && hasAdminPerm(sender)) {
       if (args.length == 1) {
@@ -869,6 +1146,26 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         }
         if (sub.equals("edit") || sub.equals("remove")) {
           return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
+        }
+      }
+    }
+    if (cmd.equals("killeffect") && hasAdminPerm(sender)) {
+      if (args.length == 1) {
+        String prefix = args[0].toLowerCase();
+        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+      }
+      if (args.length == 2) {
+        String sub = args[0].toLowerCase();
+        String prefix = args[1].toLowerCase();
+        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
+        if (sub.equals("add") || sub.equals("default")) {
+          List<String> opts = new ArrayList<>();
+          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
+          opts.addAll(getAllModelEngineBlueprintIds());
+          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
+        }
+        if (sub.equals("edit") || sub.equals("remove")) {
+          return getDbKillEffectItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
         }
       }
     }
