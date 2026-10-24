@@ -1,19 +1,21 @@
 package com.server.antitrim.manager;
 
 import com.server.antitrim.AntiArmorTrim;
+import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.AsyncChatEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Set;
 import java.util.UUID;
@@ -117,7 +119,7 @@ public class RenameManager implements Listener {
     Player player = event.getPlayer();
     if (pendingRenamePlayers.remove(player.getUniqueId())) {
       event.setCancelled(true);
-      String rawInput = event.signedMessage().message().trim();
+      String rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (rawInput.equalsIgnoreCase("cancel")) {
