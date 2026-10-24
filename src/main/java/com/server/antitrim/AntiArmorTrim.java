@@ -9,6 +9,7 @@ import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.group.Group;
@@ -61,6 +62,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private RenameManager renameManager;
 
   private final MiniMessage miniMessage = MiniMessage.miniMessage();
+  private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder()
+      .character('&')
+      .hexColors()
+      .useUnusualXRepeatedCharacterHexFormat()
+      .build();
 
   public static final String BYPASS_PERM = "armortrim.bypass";
   public static final String HAT_PERM = "armortrim.hat";
@@ -788,11 +794,28 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return miniMessage.deserialize(input).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
   }
 
-  // Chuyển đổi tên vật phẩm: &c -> <red>, bỏ italic mặc định của Minecraft Custom Name
+  /**
+   * Chuyển đổi tên vật phẩm hỗ trợ 100%:
+   * 1. Mã màu Minecraft truyền thống: &0 - &f, §0 - §f
+   * 2. Mã hiệu ứng: &l (in đậm), &m, &n, &o, &k, &r (reset)
+   * 3. Mã màu Hex: &#RRGGBB hoặc &x&r&r&g&g&b&b
+   * 4. Mã MiniMessage: <red>, <gradient:#ff0000:#00ff00>...</gradient>
+   * Bỏ italic mặc định của Minecraft Custom Name.
+   */
   public Component parseItemName(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
-    String converted = legacyToMiniMessage(input);
-    return miniMessage.deserialize(converted).decoration(TextDecoration.ITALIC, false);
+
+    // Nếu người dùng nhập thẻ tag MiniMessage (<...>)
+    if (input.contains("<") && input.contains(">")) {
+      String converted = legacyToMiniMessage(input);
+      try {
+        return miniMessage.deserialize(converted).decoration(TextDecoration.ITALIC, false);
+      } catch (Throwable ignored) {}
+    }
+
+    // Xử lý trực tiếp mã màu Minecraft qua LegacyComponentSerializer (không bị mất màu Rarity của đồ Enchant)
+    String normalized = input.replace('§', '&');
+    return legacySerializer.deserialize(normalized).decoration(TextDecoration.ITALIC, false);
   }
 
   public Component parseMinecraftFormat(String input) {
