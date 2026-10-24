@@ -91,7 +91,6 @@ public class TrimListener implements Listener {
       return;
     }
 
-    // Chỉ chặn các lệnh 3D KillEffect của plugin này, KHÔNG chặn /killeffects của plugin Classic
     if (lower.equals("/killeffect") || lower.startsWith("/killeffect ") || lower.equals("/ke") || lower.startsWith("/ke ")
         || lower.equals("/kfx") || lower.startsWith("/kfx ") || lower.equals("/3dkilleffect") || lower.startsWith("/3dkilleffect ")) {
       event.setCancelled(true);
@@ -238,16 +237,14 @@ public class TrimListener implements Listener {
 
     Player killer = plugin.getCombatTracker().resolveKiller(event);
     if (killer != null) {
-      // Kích hoạt mô hình 3D KillEffect kể cả khi tự sát
+      // 3D KillEffect kích hoạt cho cả người khác giết lẫn tự sát
       plugin.getKillEffectManager().playModelEngineKillEffect(killer, victim);
 
       // KillSound chỉ phát khi người khác giết trong PvP
       if (!killer.equals(victim)) {
         plugin.getKillSoundManager().playNexoKillSound(killer, victim);
       }
-      plugin.getCombatTracker().formatDeathMessageWeapon(event, killer);
     }
-    plugin.getCombatTracker().clearVictimRecord(victim.getUniqueId());
   }
 
   @EventHandler(priority = EventPriority.HIGHEST)
