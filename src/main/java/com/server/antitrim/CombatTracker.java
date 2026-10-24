@@ -9,6 +9,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.entity.minecart.ExplosiveMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -16,6 +17,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -60,12 +62,44 @@ public class CombatTracker implements Listener {
     }
   }
 
+  /**
+   * Bắt sự kiện mũi tên chạm vào thực thể.
+   * Kích nổ TNT Minecart ngay lập tức kể cả khi chỉ nhấp nhẹ cung (tap-shot không cần full charge),
+   * đồng thời ghi nhận vũ khí cung đã bắn.
+   */
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+  public void onProjectileHit(ProjectileHitEvent event) {
+    Entity hitEntity = event.getHitEntity();
+    if (hitEntity == null) return;
+    Projectile proj = event.getEntity();
+
+    if (hitEntity.getType() == EntityType.TNT_MINECART) {
+      markExplosiveTrigger(hitEntity, proj);
+      if (hitEntity instanceof ExplosiveMinecart em) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+          if (em.isValid()) {
+            em.explode();
+          }
+        });
+      }
+    } else if (hitEntity.getType() == EntityType.END_CRYSTAL || hitEntity.getType() == EntityType.TNT) {
+      markExplosiveTrigger(hitEntity, proj);
+    }
+  }
+
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onVehicleDamage(VehicleDamageEvent event) {
     Entity vehicle = event.getVehicle();
     Entity attackerEntity = event.getAttacker();
     if (vehicle.getType() == EntityType.TNT_MINECART && attackerEntity != null) {
       markExplosiveTrigger(vehicle, attackerEntity);
+      if (vehicle instanceof ExplosiveMinecart em) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+          if (em.isValid()) {
+            em.explode();
+          }
+        });
+      }
     }
   }
 
@@ -150,7 +184,7 @@ public class CombatTracker implements Listener {
     if (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
       UUID triggerUuid = lastExplosionTriggerUUID;
       Location triggerLoc = lastExplosionTriggerLoc;
-      ItemStack triggerWeapon = lastExplosionTriggerWeapon; // Sử dụng đúng biến vũ khí của vụ nổ
+      ItemStack triggerWeapon = lastExplosionTriggerWeapon;
       long now = System.currentTimeMillis();
       if (triggerUuid != null
           && (now - lastExplosionTriggerTime) <= 3500L
@@ -200,7 +234,7 @@ public class CombatTracker implements Listener {
         && (System.currentTimeMillis() - lastExplosionTriggerTime) <= 3500L) {
       return lastExplosionTriggerWeapon.clone();
     }
-    if (killer != null && killer.isOnline() && !killer.equals(victim)) {
+    if (killer != null && killer.isOnline()) {
       ItemStack hand = killer.getInventory().getItemInMainHand();
       if (hand != null && !hand.getType().isAir()) return hand.clone();
     }
@@ -211,7 +245,12 @@ public class CombatTracker implements Listener {
     lastDamagerMap.remove(victimUuid);
   }
 
-  // Định dạng tin nhắn chết ở EventPriority.HIGHEST để không bị plugin khác ghi đè
+  /**
+   * Định dạng tin nhắn chết:
+   * - Nạn nhân chết do người khác: "<Victim> was blown up by <Killer> using [Tên Cung]"
+   * - Tự sát bằng vụ nổ của chính mình: "<Player> was blown up by [Tên Cung]"
+   * - Hover hiển thị toàn bộ tooltip của vũ khí đã đổi tên.
+   */
   @EventHandler(priority = EventPriority.HIGHEST)
   public void onPlayerDeathMessage(PlayerDeathEvent event) {
     Player victim = event.getPlayer();
@@ -240,8 +279,26 @@ public class CombatTracker implements Listener {
           .color(NamedTextColor.WHITE)
           .hoverEvent(weapon.asHoverEvent());
 
-      Component finalMsg = originalMsg.append(Component.text(" using ").color(NamedTextColor.GRAY))
-          .append(weaponWithHover);
+      Component finalMsg;
+      boolean isSelf = killer.getUniqueId().equals(victim.getUniqueId());
+
+      if (isSelf) {
+        // Trường hợp tự sát bằng vụ nổ do mình bắn ra:
+        // Đưa về định dạng chuẩn: "<Player> was blown up by [Tên Cung]"
+        if (plainMsg.endsWith("blew up") || plainMsg.contains("blew up")) {
+          finalMsg = Component.text(victim.getName() + " was blown up by ")
+              .color(NamedTextColor.WHITE)
+              .append(weaponWithHover);
+        } else {
+          finalMsg = originalMsg.append(Component.text(" using ").color(NamedTextColor.GRAY))
+              .append(weaponWithHover);
+        }
+      } else {
+        // Trường hợp PvP giết đối thủ:
+        finalMsg = originalMsg.append(Component.text(" using ").color(NamedTextColor.GRAY))
+            .append(weaponWithHover);
+      }
+
       event.deathMessage(finalMsg);
     }
   }
