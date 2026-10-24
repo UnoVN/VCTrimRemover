@@ -1,5 +1,9 @@
 package com.server.antitrim;
 
+import com.server.antitrim.manager.HatManager;
+import com.server.antitrim.manager.KillEffectManager;
+import com.server.antitrim.manager.KillSoundManager;
+import com.server.antitrim.manager.RenameManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -50,8 +54,13 @@ import java.util.regex.Pattern;
 public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCompleter {
 
   private static AntiArmorTrim instance;
-  private TrimGuiManager guiManager;
   private TrimListener trimListener;
+  private CombatTracker combatTracker;
+  private HatManager hatManager;
+  private KillEffectManager killEffectManager;
+  private KillSoundManager killSoundManager;
+  private RenameManager renameManager;
+
   private final MiniMessage miniMessage = MiniMessage.miniMessage();
   private final LegacyComponentSerializer minecraftLegacySerializer = LegacyComponentSerializer.builder().character('&').build();
 
@@ -97,10 +106,18 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     instance = this;
     saveDefaultConfig();
     initDatabase();
-    this.guiManager = new TrimGuiManager(this);
-    this.trimListener = new TrimListener(this, guiManager);
+
+    this.hatManager = new HatManager(this);
+    this.killEffectManager = new KillEffectManager(this);
+    this.killSoundManager = new KillSoundManager(this);
+    this.renameManager = new RenameManager(this);
+    this.combatTracker = new CombatTracker(this);
+    this.trimListener = new TrimListener(this);
+
     getServer().getPluginManager().registerEvents(trimListener, this);
-    getServer().getPluginManager().registerEvents(guiManager, this);
+    getServer().getPluginManager().registerEvents(combatTracker, this);
+    getServer().getPluginManager().registerEvents(renameManager, this);
+
     registerCmd("antitrim");
     registerCmd("decor");
     registerCmd("trim");
@@ -108,8 +125,9 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     registerCmd("killeffect");
     registerCmd("killsound");
     registerCmd("rename");
+
     Bukkit.getScheduler().runTaskLater(this, this::forceTakeoverCommands, 20L);
-    getLogger().info("AntiArmorTrim v2.6.0 (Catppuccin + SQLite Hats, ModelEngine KillEffects & KillSounds) enabled!");
+    getLogger().info("AntiArmorTrim v2.6.0 (Modular + KillEffects & Weapon Death Names) enabled!");
   }
 
   public void initDatabase() {
@@ -695,17 +713,23 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   @Override
   public void onDisable() {
-    if (guiManager != null) {
-      guiManager.cleanupAllActiveKillEffectEntities();
+    if (killEffectManager != null) {
+      killEffectManager.cleanupAllActiveKillEffectEntities();
+    }
+    if (hatManager != null) {
       for (Player player : Bukkit.getOnlinePlayers()) {
-        guiManager.restoreAllCustomHatsInInventory(player);
+        hatManager.restoreAllCustomHatsInInventory(player);
       }
     }
     getLogger().info("AntiArmorTrim disabled.");
   }
 
   public static AntiArmorTrim getInstance() { return instance; }
-  public TrimGuiManager getGuiManager() { return guiManager; }
+  public CombatTracker getCombatTracker() { return combatTracker; }
+  public HatManager getHatManager() { return hatManager; }
+  public KillEffectManager getKillEffectManager() { return killEffectManager; }
+  public KillSoundManager getKillSoundManager() { return killSoundManager; }
+  public RenameManager getRenameManager() { return renameManager; }
 
   private boolean initNexoReflection() {
     Plugin nexo = Bukkit.getPluginManager().getPlugin("Nexo");
@@ -851,235 +875,38 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return finalSb.toString();
   }
 
-  public void handleHatCommand(Player p, String[] args) {
-    if (args.length == 0) {
-      guiManager.openHatMenu(p, 0);
-      return;
-    }
-    String sub = args[0].toLowerCase();
-    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
-        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
-      if (!hasAdminPerm(p)) {
-        p.sendMessage(getMessage("no-permission"));
-        return;
-      }
-      if (sub.equals("admin")) {
-        if (args.length == 1) {
-          guiManager.openHatAdminMenu(p, 0);
-          return;
-        }
-        sub = args[1].toLowerCase();
-        args = Arrays.copyOfRange(args, 1, args.length);
-      }
-      if (sub.equals("groups") || sub.equals("group")) {
-        guiManager.openHatGroupListMenu(p, 0);
-        return;
-      }
-      if (sub.equals("default") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
-          guiManager.setForceDefaultHat(p, null, false);
-        } else {
-          guiManager.setForceDefaultHat(p, rawId, true);
-        }
-        return;
-      }
-      if (sub.equals("add") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (getDbHatItems().stream().anyMatch(h -> h.equalsIgnoreCase(rawId))) {
-          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
-          guiManager.openHatEditorMenu(p, rawId);
-          return;
-        }
-        addHatToDb(rawId);
-        if (getNexoItem(rawId) != null) {
-          p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
-          p.sendMessage(getMessage("hat-admin-added", Placeholder.unparsed("id", rawId)));
-          guiManager.openHatEditorMenu(p, rawId);
-        } else {
-          p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 1f);
-          p.sendMessage(getMessage("hat-admin-added-invalid", Placeholder.unparsed("id", rawId)));
-          guiManager.openHatAdminMenu(p, 0);
-        }
-        return;
-      }
-      if (sub.equals("edit") && args.length >= 2) {
-        guiManager.openHatEditorMenu(p, args[1].trim());
-        return;
-      }
-      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
-        guiManager.deleteHatByCommand(p, args[1].trim());
-        return;
-      }
-      guiManager.openHatAdminMenu(p, 0);
-      return;
-    }
-    guiManager.openHatMenu(p, 0);
-  }
-
-  public void handleKillEffectCommand(Player p, String[] args) {
-    if (args.length == 0) {
-      guiManager.openKillEffectMenu(p, 0);
-      return;
-    }
-    String sub = args[0].toLowerCase();
-    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
-        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
-      if (!hasAdminPerm(p)) {
-        p.sendMessage(getMessage("no-permission"));
-        return;
-      }
-      if (sub.equals("admin")) {
-        if (args.length == 1) {
-          guiManager.openKillEffectAdminMenu(p, 0);
-          return;
-        }
-        sub = args[1].toLowerCase();
-        args = Arrays.copyOfRange(args, 1, args.length);
-      }
-      if (sub.equals("groups") || sub.equals("group")) {
-        guiManager.openKillEffectGroupListMenu(p, 0);
-        return;
-      }
-      if (sub.equals("default") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
-          guiManager.setForceDefaultKillEffect(p, null, false);
-        } else {
-          guiManager.setForceDefaultKillEffect(p, rawId, true);
-        }
-        return;
-      }
-      if (sub.equals("add") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (getDbKillEffectItems().stream().anyMatch(s -> s.equalsIgnoreCase(rawId))) {
-          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
-          guiManager.openKillEffectEditorMenu(p, rawId);
-          return;
-        }
-        addKillEffectToDb(rawId);
-        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
-        p.sendMessage(getMessage("killeffect-admin-added", Placeholder.unparsed("id", rawId)));
-        guiManager.openKillEffectEditorMenu(p, rawId);
-        return;
-      }
-      if (sub.equals("edit") && args.length >= 2) {
-        guiManager.openKillEffectEditorMenu(p, args[1].trim());
-        return;
-      }
-      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
-        if (removeKillEffectFromDb(args[1].trim())) {
-          p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
-          p.sendMessage(getMessage("hat-admin-removed", Placeholder.unparsed("id", args[1].trim())));
-        }
-        guiManager.openKillEffectAdminMenu(p, 0);
-        return;
-      }
-      guiManager.openKillEffectAdminMenu(p, 0);
-      return;
-    }
-    guiManager.openKillEffectMenu(p, 0);
-  }
-
-  public void handleKillSoundCommand(Player p, String[] args) {
-    if (args.length == 0) {
-      guiManager.openKillSoundMenu(p, 0);
-      return;
-    }
-    String sub = args[0].toLowerCase();
-    if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
-        || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
-      if (!hasAdminPerm(p)) {
-        p.sendMessage(getMessage("no-permission"));
-        return;
-      }
-      if (sub.equals("admin")) {
-        if (args.length == 1) {
-          guiManager.openKillSoundAdminMenu(p, 0);
-          return;
-        }
-        sub = args[1].toLowerCase();
-        args = Arrays.copyOfRange(args, 1, args.length);
-      }
-      if (sub.equals("groups") || sub.equals("group")) {
-        guiManager.openKillSoundGroupListMenu(p, 0);
-        return;
-      }
-      if (sub.equals("default") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (rawId.equalsIgnoreCase("off") || rawId.equalsIgnoreCase("none") || rawId.equalsIgnoreCase("clear") || rawId.equalsIgnoreCase("disable")) {
-          guiManager.setForceDefaultKillSound(p, null, false);
-        } else {
-          guiManager.setForceDefaultKillSound(p, rawId, true);
-        }
-        return;
-      }
-      if (sub.equals("add") && args.length >= 2) {
-        String rawId = args[1].trim();
-        if (getDbKillSoundItems().stream().anyMatch(s -> s.equalsIgnoreCase(rawId))) {
-          p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
-          p.sendMessage(getMessage("hat-admin-exists", Placeholder.unparsed("id", rawId)));
-          guiManager.openKillSoundEditorMenu(p, rawId);
-          return;
-        }
-        addKillSoundToDb(rawId);
-        p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
-        p.sendMessage(getMessage("killsound-admin-added", Placeholder.unparsed("id", rawId)));
-        guiManager.openKillSoundEditorMenu(p, rawId);
-        return;
-      }
-      if (sub.equals("edit") && args.length >= 2) {
-        guiManager.openKillSoundEditorMenu(p, args[1].trim());
-        return;
-      }
-      if ((sub.equals("remove") || sub.equals("delete")) && args.length >= 2) {
-        if (removeKillSoundFromDb(args[1].trim())) {
-          p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
-          p.sendMessage(getMessage("hat-admin-removed", Placeholder.unparsed("id", args[1].trim())));
-        }
-        guiManager.openKillSoundAdminMenu(p, 0);
-        return;
-      }
-      guiManager.openKillSoundAdminMenu(p, 0);
-      return;
-    }
-    guiManager.openKillSoundMenu(p, 0);
-  }
-
   @Override
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
     String cmdName = command.getName().toLowerCase();
     if (cmdName.equals("decor")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      guiManager.openDecorHub(p);
+      com.server.antitrim.gui.DecorHubGui.open(this, p);
       return true;
     }
     if (cmdName.equals("trim")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      guiManager.openMainMenu(p);
+      com.server.antitrim.gui.TrimStudioGui.openMain(this, p);
       return true;
     }
     if (cmdName.equals("hat")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      handleHatCommand(p, args);
+      com.server.antitrim.gui.HatStudioGui.handleCommand(this, p, args);
       return true;
     }
     if (cmdName.equals("killeffect")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      handleKillEffectCommand(p, args);
+      com.server.antitrim.gui.KillEffectStudioGui.handleCommand(this, p, args);
       return true;
     }
     if (cmdName.equals("killsound")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      handleKillSoundCommand(p, args);
+      com.server.antitrim.gui.KillSoundStudioGui.handleCommand(this, p, args);
       return true;
     }
     if (cmdName.equals("rename")) {
       if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      if (args.length == 0) guiManager.openRenameMenu(p);
-      else guiManager.applyItemRename(p, String.join(" ", args));
+      if (args.length == 0) com.server.antitrim.gui.RenameStudioGui.open(this, p);
+      else renameManager.applyItemRename(p, String.join(" ", args));
       return true;
     }
     if (args.length > 0) {
@@ -1092,30 +919,30 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           for (World world : Bukkit.getWorlds()) trimListener.lockAlwaysDaytime(world);
         }
         for (Player online : Bukkit.getOnlinePlayers()) {
-          guiManager.forceRefreshEquippedHat(online);
-          guiManager.applyAllSavedTrims(online);
+          hatManager.forceRefreshEquippedHat(online);
+          hatManager.applyAllSavedTrims(online);
         }
         sender.sendMessage(getMessage("reload-success"));
         return true;
       }
       if (args[0].equalsIgnoreCase("groups") && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openHatGroupListMenu(p, 0);
+        com.server.antitrim.gui.HatStudioGui.openGroupListMenu(this, p, 0);
         return true;
       }
       if ((args[0].equalsIgnoreCase("killeffects") || args[0].equalsIgnoreCase("ke") || args[0].equalsIgnoreCase("kfx")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openKillEffectAdminMenu(p, 0);
+        com.server.antitrim.gui.KillEffectStudioGui.openAdminMenu(this, p, 0);
         return true;
       }
       if ((args[0].equalsIgnoreCase("killsounds") || args[0].equalsIgnoreCase("ks")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openKillSoundAdminMenu(p, 0);
+        com.server.antitrim.gui.KillSoundStudioGui.openAdminMenu(this, p, 0);
         return true;
       }
       if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
         if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        guiManager.openHatAdminMenu(p, 0);
+        com.server.antitrim.gui.HatStudioGui.openAdminMenu(this, p, 0);
         return true;
       }
     }
@@ -1130,10 +957,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       if (args.length == 1) return List.of("reload", "hats", "killeffects", "killsounds", "groups");
     }
     if (cmd.equals("hat") && hasAdminPerm(sender)) {
-      if (args.length == 1) {
-        String prefix = args[0].toLowerCase();
-        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-      }
+      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
@@ -1144,16 +968,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           opts.addAll(getAllNexoItemIds());
           return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
-        if (sub.equals("edit") || sub.equals("remove")) {
-          return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-        }
+        if (sub.equals("edit") || sub.equals("remove")) return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
       }
     }
     if (cmd.equals("killeffect") && hasAdminPerm(sender)) {
-      if (args.length == 1) {
-        String prefix = args[0].toLowerCase();
-        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-      }
+      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
@@ -1164,16 +983,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           opts.addAll(getAllModelEngineBlueprintIds());
           return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
-        if (sub.equals("edit") || sub.equals("remove")) {
-          return getDbKillEffectItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-        }
+        if (sub.equals("edit") || sub.equals("remove")) return getDbKillEffectItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
       }
     }
     if (cmd.equals("killsound") && hasAdminPerm(sender)) {
-      if (args.length == 1) {
-        String prefix = args[0].toLowerCase();
-        return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-      }
+      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
       if (args.length == 2) {
         String sub = args[0].toLowerCase();
         String prefix = args[1].toLowerCase();
@@ -1185,9 +999,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           opts.addAll(getDbKillSoundItems());
           return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
         }
-        if (sub.equals("edit") || sub.equals("remove")) {
-          return getDbKillSoundItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-        }
+        if (sub.equals("edit") || sub.equals("remove")) return getDbKillSoundItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
       }
     }
     return Collections.emptyList();
