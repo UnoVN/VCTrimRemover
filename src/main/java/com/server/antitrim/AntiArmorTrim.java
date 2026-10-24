@@ -788,14 +788,13 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return miniMessage.deserialize(input).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
   }
 
-  // Chuyển đổi màu sắc chuẩn xác: &c -> <red>, &#rrggbb -> <#rrggbb>, bỏ italic mặc định
+  // Chuyển đổi tên vật phẩm: &c -> <red>, bỏ italic mặc định của Minecraft Custom Name
   public Component parseItemName(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
     String converted = legacyToMiniMessage(input);
     return miniMessage.deserialize(converted).decoration(TextDecoration.ITALIC, false);
   }
 
-  // Giữ lại alias để tương thích toàn diện với bất kỳ file nào gọi parseMinecraftFormat
   public Component parseMinecraftFormat(String input) {
     return parseItemName(input);
   }
