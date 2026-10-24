@@ -71,7 +71,7 @@ public class RenameManager implements Listener {
       return;
     }
 
-    // Sử dụng parseItemName để màu sắc &c hiển thị chuẩn xác màu đỏ
+    // Chuyển đổi mã màu chắc chắn ra màu Đỏ chuẩn với parseItemName
     Component parsedName = plugin.parseItemName(rawInput);
     String plainVisible = PlainTextComponentSerializer.plainText().serialize(parsedName);
     int maxLength = plugin.getConfig().getInt("rename.max-length", 48);
