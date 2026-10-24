@@ -11,6 +11,11 @@ gui:
   hat-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Hat Perm Groups</bold> <#6c7086>(<page>/<max_page>)"
   hat-group-select-title: "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)"
   hat-editor-title: "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>"
+  killeffect-title: "<white><sprite:items:item/totem_of_undying></white> <#cba6f7><bold>KillEffect Studio</bold> <#6c7086>(<page>/<max_page>)"
+  killeffect-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin KillEffect Manager</bold> <#6c7086>(<page>/<max_page>)"
+  killeffect-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>KillEffect Perm Groups</bold> <#6c7086>(<page>/<max_page>)"
+  killeffect-group-select-title: "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>KE Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)"
+  killeffect-editor-title: "<white><sprite:items:item/totem_of_undying></white> <#cba6f7><bold>Edit KillEffect:</bold> <#89dceb><id>"
   killsound-title: "<white><sprite:items:item/music_disc_otherside></white> <#cba6f7><bold>KillSound Studio</bold> <#6c7086>(<page>/<max_page>)"
   killsound-admin-title: "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin KillSound Manager</bold> <#6c7086>(<page>/<max_page>)"
   killsound-groups-title: "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>KillSound Perm Groups</bold> <#6c7086>(<page>/<max_page>)"
@@ -33,6 +38,12 @@ hats:
   hide-locked-hats: true
   items: []
   definitions: {}
+
+killeffects:
+  hide-locked-killeffects: true
+  play-pack-sound: true
+  volume: 3.0
+  pitch: 1.0
 
 killsounds:
   hide-locked-killsounds: true
@@ -74,10 +85,15 @@ messages:
   hat-admin-default-set: "<#a6e3a1>Set forced default to <#89dceb><id><#a6e3a1>."
   hat-admin-default-cleared: "<#fab387>Disabled forced default."
   hat-admin-default-toggled: "<#cdd6f4>Force Default is now <state><#cdd6f4>."
+  killeffect-selected: "<white><sprite:items:item/totem_of_undying></white> <#cdd6f4>Selected 3D KillEffect <effect><#cdd6f4>."
+  killeffect-preview: "<white><sprite:items:item/ender_eye></white> <#cdd6f4>Spawning 3D preview for <effect><#cdd6f4>..."
+  killeffect-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Disabled active KillEffect."
+  killeffect-admin-prompt-id: "<white><sprite:items:item/totem_of_undying></white> <#cdd6f4>Type the <#89dceb>ModelEngine Blueprint ID<#cdd6f4> in chat (e.g. <#a6e3a1>kfx_acidic_corrosion<#cdd6f4>), or type <#f38ba8>cancel<#cdd6f4>."
+  killeffect-admin-added: "<#a6e3a1>Added ModelEngine KillEffect <#89dceb><id><#a6e3a1>."
   killsound-selected: "<white><sprite:items:item/music_disc_otherside></white> <#cdd6f4>Selected KillSound <sound><#cdd6f4>."
   killsound-preview: "<white><sprite:items:item/note_block></white> <#cdd6f4>Playing preview for <sound><#cdd6f4>..."
   killsound-cleared: "<white><sprite:items:item/barrier></white> <#cdd6f4>Disabled active KillSound."
-  killsound-admin-prompt-id: "<white><sprite:items:item/jukebox></white> <#cdd6f4>Type the <#89dceb>Nexo Sound ID<#cdd6f4> in chat (from <#f9e2af>Nexo/sounds.yml<#cdd6f4>, e.g. <#a6e3a1>nexo:mysound<#cdd6f4>), or type <#f38ba8>cancel<#cdd6f4>."
+  killsound-admin-prompt-id: "<white><sprite:items:item/jukebox></white> <#cdd6f4>Type the <#89dceb>Nexo Sound ID<#cdd6f4> in chat (from <#f9e2af>Nexo/sounds.yml<#cdd6f4>, e.g. <#a6e3a1>vsounds:fah<#cdd6f4>), or type <#f38ba8>cancel<#cdd6f4>."
   killsound-admin-added: "<#a6e3a1>Added Nexo KillSound <#89dceb><id><#a6e3a1>."
   rename-prompt: "<white><sprite:items:item/name_tag></white> <#cdd6f4>Type the new item name in chat, or type <#f38ba8>cancel<#cdd6f4>."
   rename-cancelled: "<#a6adc8>Item rename cancelled."
@@ -88,4 +104,4 @@ messages:
   reload-success: "<#a6e3a1>Configuration & SQLite Database reloaded."
   no-permission: "<#f38ba8>You do not have permission to use this command."
   only-players: "<#f38ba8>This command can only be used in-game."
-  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | killsounds | groups"
+  usage: "<#a6adc8>Usage: <#f9e2af>/<label> reload | hats | killeffects | killsounds | groups"
