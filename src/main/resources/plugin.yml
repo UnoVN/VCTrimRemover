@@ -20,8 +20,8 @@ commands:
     description: Open the Custom Hat Studio GUI
     aliases: [hats, customhat]
   killeffect:
-    description: Open the KillEffect Studio GUI
-    aliases: [ke, kfx, killeffects]
+    description: Open the 3D KillEffect Studio GUI
+    aliases: [ke, kfx, 3dkilleffect, 3dke]
   killsound:
     description: Open the KillSound Studio GUI
     aliases: [ks, killsounds]
