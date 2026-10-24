@@ -71,7 +71,8 @@ public class RenameManager implements Listener {
       return;
     }
 
-    Component parsedName = plugin.parseMinecraftFormat(rawInput);
+    // Sử dụng parseItemName để màu sắc &c hiển thị chuẩn xác màu đỏ
+    Component parsedName = plugin.parseItemName(rawInput);
     String plainVisible = PlainTextComponentSerializer.plainText().serialize(parsedName);
     int maxLength = plugin.getConfig().getInt("rename.max-length", 48);
     if (plainVisible.length() > maxLength) {
@@ -83,7 +84,6 @@ public class RenameManager implements Listener {
     ItemMeta meta = item.getItemMeta();
     if (meta == null) return;
     meta.displayName(parsedName);
-    // Gắn thẻ định danh PDC để hệ thống kiểm soát quyền sở hữu
     meta.getPersistentDataContainer().set(renamedItemKey, PersistentDataType.BOOLEAN, true);
     item.setItemMeta(meta);
     player.getInventory().setItemInMainHand(item);
