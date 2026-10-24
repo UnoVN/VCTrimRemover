@@ -71,7 +71,6 @@ public class RenameManager implements Listener {
       return;
     }
 
-    // Chuyển đổi mã màu chắc chắn ra màu Đỏ chuẩn với parseItemName
     Component parsedName = plugin.parseItemName(rawInput);
     String plainVisible = PlainTextComponentSerializer.plainText().serialize(parsedName);
     int maxLength = plugin.getConfig().getInt("rename.max-length", 48);
@@ -119,16 +118,28 @@ public class RenameManager implements Listener {
     Player player = event.getPlayer();
     if (pendingRenamePlayers.remove(player.getUniqueId())) {
       event.setCancelled(true);
-      String rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+
+      String rawInput = null;
+      try {
+        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+          rawInput = event.signedMessage().message().trim();
+        }
+      } catch (Throwable ignored) {}
+
+      if (rawInput == null || rawInput.isBlank()) {
+        rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+      }
+
+      final String finalInput = rawInput;
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
-        if (rawInput.equalsIgnoreCase("cancel")) {
+        if (finalInput.equalsIgnoreCase("cancel")) {
           player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
           player.sendMessage(plugin.getMessage("rename-cancelled"));
           com.server.antitrim.gui.RenameStudioGui.open(plugin, player);
           return;
         }
-        applyItemRename(player, rawInput);
+        applyItemRename(player, finalInput);
         com.server.antitrim.gui.RenameStudioGui.open(plugin, player);
       });
     }
