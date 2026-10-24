@@ -16,6 +16,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,71 +35,55 @@ public class CombatTracker implements Listener {
   private final Map<UUID, UUID> explosiveDetonatorMap = new ConcurrentHashMap<>();
   private final Map<UUID, ItemStack> explosiveWeaponMap = new ConcurrentHashMap<>();
 
-  private volatile UUID lastBlockExploderUUID;
-  private volatile Location lastBlockExploderLoc;
-  private volatile ItemStack lastBlockExploderWeapon;
-  private volatile long lastBlockExploderTime;
+  private volatile UUID lastExplosionTriggerUUID;
+  private volatile Location lastExplosionTriggerLoc;
+  private volatile ItemStack lastExplosionTriggerWeapon;
+  private volatile long lastExplosionTriggerTime;
 
   public CombatTracker(AntiArmorTrim plugin) {
     this.plugin = plugin;
   }
 
   public void recordBlockExplosionTrigger(Player player, Location loc) {
-    this.lastBlockExploderUUID = player.getUniqueId();
-    this.lastBlockExploderLoc = loc.clone();
+    this.lastExplosionTriggerUUID = player.getUniqueId();
+    this.lastExplosionTriggerLoc = loc.clone();
     ItemStack held = player.getInventory().getItemInMainHand();
-    this.lastBlockExploderWeapon = (held != null && !held.getType().isAir()) ? held.clone() : null;
-    this.lastBlockExploderTime = System.currentTimeMillis();
+    this.lastExplosionTriggerWeapon = (held != null && !held.getType().isAir()) ? held.clone() : null;
+    this.lastExplosionTriggerTime = System.currentTimeMillis();
   }
 
+  // 1. Lưu lại cây cung ngay khi bắn ra mũi tên (bất kể kéo cung 10% hay 100% lực)
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onShootBow(EntityShootBowEvent event) {
     if (event.getEntity() instanceof Player && event.getBow() != null) {
-      // Lưu lại cây cung được dùng để bắn bất kể kéo lực bao nhiêu %
       projectileWeaponMap.put(event.getProjectile().getUniqueId(), event.getBow().clone());
-      Bukkit.getScheduler().runTaskLater(plugin, () -> projectileWeaponMap.remove(event.getProjectile().getUniqueId()), 200L);
+      Bukkit.getScheduler().runTaskLater(plugin, () -> projectileWeaponMap.remove(event.getProjectile().getUniqueId()), 300L);
     }
   }
 
+  // 2. Bắt cả sự kiện xe bị tác động (VehicleDamageEvent) dành riêng cho TNT Cart khi bị bắn nhẹ
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onVehicleDamage(VehicleDamageEvent event) {
+    Entity vehicle = event.getVehicle();
+    Entity attackerEntity = event.getAttacker();
+
+    if (vehicle.getType() == EntityType.TNT_MINECART && attackerEntity != null) {
+      markExplosiveTrigger(vehicle, attackerEntity);
+    }
+  }
+
+  // 3. Bắt sự kiện gây sát thương lên End Crystal, TNT và TNT Cart
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onCombatDamage(EntityDamageByEntityEvent event) {
     Entity damaged = event.getEntity();
     Entity damager = event.getDamager();
 
-    // 1. Khi bắn trúng hoặc đánh vào End Crystal / TNT / TNT Minecart
     if (damaged.getType() == EntityType.END_CRYSTAL || damaged.getType() == EntityType.TNT || damaged.getType() == EntityType.TNT_MINECART) {
-      Player triggerPlayer = null;
-      ItemStack weaponUsed = null;
-
-      if (damager instanceof Player p) {
-        triggerPlayer = p;
-        ItemStack hand = p.getInventory().getItemInMainHand();
-        weaponUsed = (hand != null && !hand.getType().isAir()) ? hand.clone() : null;
-      } else if (damager instanceof Projectile proj && proj.getShooter() instanceof Player p) {
-        triggerPlayer = p;
-        weaponUsed = projectileWeaponMap.get(proj.getUniqueId());
-        if (weaponUsed == null) {
-          ItemStack hand = p.getInventory().getItemInMainHand();
-          weaponUsed = (hand != null && !hand.getType().isAir()) ? hand.clone() : null;
-        }
-      }
-
-      if (triggerPlayer != null) {
-        explosiveDetonatorMap.put(damaged.getUniqueId(), triggerPlayer.getUniqueId());
-        if (weaponUsed != null) explosiveWeaponMap.put(damaged.getUniqueId(), weaponUsed);
-        lastBlockExploderUUID = triggerPlayer.getUniqueId();
-        lastBlockExploderLoc = damaged.getLocation();
-        lastBlockExploderWeapon = weaponUsed;
-        lastBlockExploderTime = System.currentTimeMillis();
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-          explosiveDetonatorMap.remove(damaged.getUniqueId());
-          explosiveWeaponMap.remove(damaged.getUniqueId());
-        }, 80L);
-      }
+      markExplosiveTrigger(damaged, damager);
       return;
     }
 
-    // 2. Khi người chơi nhận sát thương từ thực thể khác (kể cả khi tự làm nổ chính mình)
+    // Khi người chơi nhận sát thương từ thực thể khác (kể cả khi tự làm nổ chính mình)
     if (damaged instanceof Player victim) {
       Player attacker = null;
       ItemStack weapon = null;
@@ -119,9 +104,9 @@ public class CombatTracker implements Listener {
         if (detonatorUuid != null) {
           attacker = Bukkit.getPlayer(detonatorUuid);
           weapon = explosiveWeaponMap.get(damager.getUniqueId());
-        } else if (lastBlockExploderUUID != null && (System.currentTimeMillis() - lastBlockExploderTime) <= 1500L) {
-          attacker = Bukkit.getPlayer(lastBlockExploderUUID);
-          weapon = lastBlockExploderWeapon;
+        } else if (lastExplosionTriggerUUID != null && (System.currentTimeMillis() - lastExplosionTriggerTime) <= 3000L) {
+          attacker = Bukkit.getPlayer(lastExplosionTriggerUUID);
+          weapon = lastExplosionTriggerWeapon;
         }
       }
 
@@ -131,20 +116,53 @@ public class CombatTracker implements Listener {
     }
   }
 
+  private void markExplosiveTrigger(Entity explosiveEntity, Entity damager) {
+    Player triggerPlayer = null;
+    ItemStack weaponUsed = null;
+
+    if (damager instanceof Player p) {
+      triggerPlayer = p;
+      ItemStack hand = p.getInventory().getItemInMainHand();
+      weaponUsed = (hand != null && !hand.getType().isAir()) ? hand.clone() : null;
+    } else if (damager instanceof Projectile proj && proj.getShooter() instanceof Player p) {
+      triggerPlayer = p;
+      weaponUsed = projectileWeaponMap.get(proj.getUniqueId());
+      if (weaponUsed == null) {
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        weaponUsed = (hand != null && !hand.getType().isAir()) ? hand.clone() : null;
+      }
+    }
+
+    if (triggerPlayer != null) {
+      explosiveDetonatorMap.put(explosiveEntity.getUniqueId(), triggerPlayer.getUniqueId());
+      if (weaponUsed != null) explosiveWeaponMap.put(explosiveEntity.getUniqueId(), weaponUsed);
+      lastExplosionTriggerUUID = triggerPlayer.getUniqueId();
+      lastExplosionTriggerLoc = explosiveEntity.getLocation();
+      lastExplosionTriggerWeapon = weaponUsed;
+      lastExplosionTriggerTime = System.currentTimeMillis();
+
+      // Giữ bộ nhớ xe nổ trong 5 giây để đề phòng xe nổ trễ sau va chạm
+      Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        explosiveDetonatorMap.remove(explosiveEntity.getUniqueId());
+        explosiveWeaponMap.remove(explosiveEntity.getUniqueId());
+      }, 100L);
+    }
+  }
+
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onExplosionDamage(EntityDamageEvent event) {
     if (!(event.getEntity() instanceof Player victim)) return;
     EntityDamageEvent.DamageCause cause = event.getCause();
     if (cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION) {
-      UUID triggerUuid = lastBlockExploderUUID;
-      Location triggerLoc = lastBlockExploderLoc;
+      UUID triggerUuid = lastExplosionTriggerUUID;
+      Location triggerLoc = lastExplosionTriggerLoc;
       long now = System.currentTimeMillis();
       if (triggerUuid != null
-          && (now - lastBlockExploderTime) <= 1500L
+          && (now - lastExplosionTriggerTime) <= 3000L
           && triggerLoc != null && triggerLoc.getWorld() != null
           && triggerLoc.getWorld().equals(victim.getWorld())
           && triggerLoc.distanceSquared(victim.getLocation()) <= 576) {
-        lastDamagerMap.put(victim.getUniqueId(), new CombatRecord(triggerUuid, lastBlockExploderWeapon, now));
+        lastDamagerMap.put(victim.getUniqueId(), new CombatRecord(triggerUuid, lastExplosionTriggerWeapon, now));
       }
     }
   }
@@ -174,8 +192,8 @@ public class CombatTracker implements Listener {
     if (record != null && record.weaponUsed() != null) {
       return record.weaponUsed();
     }
-    if (lastBlockExploderWeapon != null && (System.currentTimeMillis() - lastBlockExploderTime) <= 2000L) {
-      return lastBlockExploderWeapon;
+    if (lastExplosionTriggerWeapon != null && (System.currentTimeMillis() - lastExplosionTriggerTime) <= 3000L) {
+      return lastExplosionTriggerWeapon;
     }
     ItemStack hand = killer.getInventory().getItemInMainHand();
     return (hand != null && !hand.getType().isAir()) ? hand : null;
@@ -185,7 +203,6 @@ public class CombatTracker implements Listener {
     lastDamagerMap.remove(victimUuid);
   }
 
-  // Tự động kiểm tra và thêm tên vũ khí đã rename kèm Hover Tooltip vào tin nhắn chết
   public void formatDeathMessageWeapon(PlayerDeathEvent event, Player killer) {
     Component originalMsg = event.deathMessage();
     if (originalMsg == null) return;
