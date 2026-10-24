@@ -38,7 +38,6 @@ import org.bukkit.inventory.meta.ArmorMeta;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.List;
 
 public class TrimListener implements Listener {
 
@@ -236,9 +235,12 @@ public class TrimListener implements Listener {
     plugin.getHatManager().restoreAllCustomHatsInInventory(victim);
 
     Player killer = plugin.getCombatTracker().resolveKiller(event);
-    if (killer != null && !killer.equals(victim)) {
-      plugin.getKillEffectManager().playModelEngineKillEffect(killer, victim);
-      plugin.getKillSoundManager().playNexoKillSound(killer, victim);
+    if (killer != null) {
+      if (!killer.equals(victim)) {
+        plugin.getKillEffectManager().playModelEngineKillEffect(killer, victim);
+        plugin.getKillSoundManager().playNexoKillSound(killer, victim);
+      }
+      // Định dạng hiển thị tên vũ khí đã rename cho cả PvP lẫn khi bạn tự test nổ chính mình
       plugin.getCombatTracker().formatDeathMessageWeapon(event, killer);
     }
     plugin.getCombatTracker().clearVictimRecord(victim.getUniqueId());
@@ -465,10 +467,10 @@ public class TrimListener implements Listener {
         event.getItem().setItemStack(picked);
       }
 
-      // Xóa vật phẩm đã rename nếu người nhặt không có quyền
+      // Tự động xóa vĩnh viễn item rename trên đất nếu người nhặt không có quyền
       if (!plugin.getRenameManager().canUseRename(player) && plugin.getRenameManager().isPluginRenamedItem(picked)) {
         event.setCancelled(true);
-        event.getItem().remove(); // Xóa sạch thực thể rơi trên đất
+        event.getItem().remove();
         player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1f, 1f);
         player.sendMessage(plugin.getMessage("rename-unauthorized-pickup"));
         return;
