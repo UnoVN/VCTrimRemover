@@ -2,14 +2,13 @@ package com.server.antitrim;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.entity.EnderCrystal;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
-import org.bukkit.entity.TNTPrimed;
-import org.bukkit.entity.minecart.ExplosiveMinecart;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -55,8 +54,9 @@ public class CombatTracker implements Listener {
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onShootBow(EntityShootBowEvent event) {
     if (event.getEntity() instanceof Player && event.getBow() != null) {
+      // Lưu lại cây cung được dùng để bắn bất kể kéo lực bao nhiêu %
       projectileWeaponMap.put(event.getProjectile().getUniqueId(), event.getBow().clone());
-      Bukkit.getScheduler().runTaskLater(plugin, () -> projectileWeaponMap.remove(event.getProjectile().getUniqueId()), 100L);
+      Bukkit.getScheduler().runTaskLater(plugin, () -> projectileWeaponMap.remove(event.getProjectile().getUniqueId()), 200L);
     }
   }
 
@@ -66,7 +66,7 @@ public class CombatTracker implements Listener {
     Entity damager = event.getDamager();
 
     // 1. Khi bắn trúng hoặc đánh vào End Crystal / TNT / TNT Minecart
-    if (damaged instanceof EnderCrystal || damaged instanceof TNTPrimed || damaged instanceof ExplosiveMinecart) {
+    if (damaged.getType() == EntityType.END_CRYSTAL || damaged.getType() == EntityType.TNT || damaged.getType() == EntityType.TNT_MINECART) {
       Player triggerPlayer = null;
       ItemStack weaponUsed = null;
 
@@ -93,12 +93,12 @@ public class CombatTracker implements Listener {
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
           explosiveDetonatorMap.remove(damaged.getUniqueId());
           explosiveWeaponMap.remove(damaged.getUniqueId());
-        }, 60L);
+        }, 80L);
       }
       return;
     }
 
-    // 2. Khi người chơi nhận sát thương từ thực thể khác
+    // 2. Khi người chơi nhận sát thương từ thực thể khác (kể cả khi tự làm nổ chính mình)
     if (damaged instanceof Player victim) {
       Player attacker = null;
       ItemStack weapon = null;
@@ -114,18 +114,18 @@ public class CombatTracker implements Listener {
           ItemStack hand = p.getInventory().getItemInMainHand();
           weapon = (hand != null && !hand.getType().isAir()) ? hand.clone() : null;
         }
-      } else if (damager instanceof EnderCrystal || damager instanceof TNTPrimed || damager instanceof ExplosiveMinecart) {
+      } else if (damager.getType() == EntityType.END_CRYSTAL || damager.getType() == EntityType.TNT || damager.getType() == EntityType.TNT_MINECART) {
         UUID detonatorUuid = explosiveDetonatorMap.get(damager.getUniqueId());
         if (detonatorUuid != null) {
           attacker = Bukkit.getPlayer(detonatorUuid);
           weapon = explosiveWeaponMap.get(damager.getUniqueId());
-        } else if (lastBlockExploderUUID != null && (System.currentTimeMillis() - lastBlockExploderTime) <= 1000L) {
+        } else if (lastBlockExploderUUID != null && (System.currentTimeMillis() - lastBlockExploderTime) <= 1500L) {
           attacker = Bukkit.getPlayer(lastBlockExploderUUID);
           weapon = lastBlockExploderWeapon;
         }
       }
 
-      if (attacker != null && !attacker.equals(victim)) {
+      if (attacker != null) {
         lastDamagerMap.put(victim.getUniqueId(), new CombatRecord(attacker.getUniqueId(), weapon, System.currentTimeMillis()));
       }
     }
@@ -139,8 +139,8 @@ public class CombatTracker implements Listener {
       UUID triggerUuid = lastBlockExploderUUID;
       Location triggerLoc = lastBlockExploderLoc;
       long now = System.currentTimeMillis();
-      if (triggerUuid != null && !triggerUuid.equals(victim.getUniqueId())
-          && (now - lastBlockExploderTime) <= 1200L
+      if (triggerUuid != null
+          && (now - lastBlockExploderTime) <= 1500L
           && triggerLoc != null && triggerLoc.getWorld() != null
           && triggerLoc.getWorld().equals(victim.getWorld())
           && triggerLoc.distanceSquared(victim.getLocation()) <= 576) {
@@ -163,7 +163,7 @@ public class CombatTracker implements Listener {
     CombatRecord record = lastDamagerMap.get(victim.getUniqueId());
     if (record != null && (System.currentTimeMillis() - record.timestamp()) <= 15000L) {
       Player tracked = Bukkit.getPlayer(record.attackerUuid());
-      if (tracked != null && tracked.isOnline() && !tracked.equals(victim)) return tracked;
+      if (tracked != null && tracked.isOnline()) return tracked;
     }
     return null;
   }
@@ -171,8 +171,11 @@ public class CombatTracker implements Listener {
   @Nullable
   public ItemStack resolveKillerWeapon(Player victim, Player killer) {
     CombatRecord record = lastDamagerMap.get(victim.getUniqueId());
-    if (record != null && record.attackerUuid().equals(killer.getUniqueId()) && record.weaponUsed() != null) {
+    if (record != null && record.weaponUsed() != null) {
       return record.weaponUsed();
+    }
+    if (lastBlockExploderWeapon != null && (System.currentTimeMillis() - lastBlockExploderTime) <= 2000L) {
+      return lastBlockExploderWeapon;
     }
     ItemStack hand = killer.getInventory().getItemInMainHand();
     return (hand != null && !hand.getType().isAir()) ? hand : null;
@@ -196,6 +199,10 @@ public class CombatTracker implements Listener {
     }
 
     if (weaponName != null) {
+      String plainMsg = PlainTextComponentSerializer.plainText().serialize(originalMsg);
+      String plainName = PlainTextComponentSerializer.plainText().serialize(weaponName);
+      if (plainMsg.contains(plainName)) return;
+
       Component weaponWithHover = Component.text("[")
           .append(weaponName)
           .append(Component.text("]"))
