@@ -43,7 +43,7 @@ permissions:
     description: Allows equipping general Nexo KillSounds.
     default: op
   armortrim.rename:
-    description: Allows renaming items via the Rename Studio GUI or command.
+    description: Allows renaming items and holding custom-renamed items.
     default: op
   armortrim.admin:
     description: Allows reloading config and managing Hats, KillEffects & KillSounds via Admin GUI.
