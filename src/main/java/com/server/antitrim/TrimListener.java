@@ -112,6 +112,15 @@ public class TrimListener implements Listener {
       return;
     }
 
+    if (lower.equals("/killeffect") || lower.startsWith("/killeffect ") || lower.equals("/ke") || lower.startsWith("/ke ")
+        || lower.equals("/kfx") || lower.startsWith("/kfx ") || lower.equals("/killeffects") || lower.startsWith("/killeffects ")) {
+      event.setCancelled(true);
+      String[] parts = msg.split("\\s+");
+      String[] args = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
+      plugin.handleKillEffectCommand(player, args);
+      return;
+    }
+
     if (lower.equals("/killsound") || lower.startsWith("/killsound ") || lower.equals("/ks") || lower.startsWith("/ks ")
         || lower.equals("/killsounds") || lower.startsWith("/killsounds ")) {
       event.setCancelled(true);
@@ -220,7 +229,6 @@ public class TrimListener implements Listener {
     });
   }
 
-  // Theo doi nguoi kich no End Crystal / Respawn Anchor / Sat thuong PvP
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
   public void onCombatDamageByEntity(EntityDamageByEntityEvent event) {
     Entity damaged = event.getEntity();
@@ -304,7 +312,6 @@ public class TrimListener implements Listener {
     return null;
   }
 
-  // Khoi phuc mu goc khi chet va phat Nexo KillSound neu bi nguoi choi khac ha guc
   @EventHandler(priority = EventPriority.LOWEST)
   public void onDeath(PlayerDeathEvent event) {
     List<ItemStack> drops = event.getDrops();
@@ -318,6 +325,7 @@ public class TrimListener implements Listener {
     Player killer = resolveKiller(event);
     lastDamagerMap.remove(victim.getUniqueId());
     if (killer != null && !killer.equals(victim)) {
+      guiManager.playModelEngineKillEffect(killer, victim);
       guiManager.playNexoKillSound(killer, victim);
     }
   }
