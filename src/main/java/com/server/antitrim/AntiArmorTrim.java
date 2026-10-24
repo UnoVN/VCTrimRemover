@@ -5,11 +5,11 @@ import com.server.antitrim.manager.KillEffectManager;
 import com.server.antitrim.manager.KillSoundManager;
 import com.server.antitrim.manager.RenameManager;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
 import net.luckperms.api.model.group.Group;
@@ -62,7 +62,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private RenameManager renameManager;
 
   private final MiniMessage miniMessage = MiniMessage.miniMessage();
-  private final LegacyComponentSerializer minecraftLegacySerializer = LegacyComponentSerializer.builder().character('&').build();
 
   public static final String BYPASS_PERM = "armortrim.bypass";
   public static final String HAT_PERM = "armortrim.hat";
@@ -790,9 +789,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return miniMessage.deserialize(input).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
   }
 
-  public Component parseMinecraftFormat(String input) {
+  // Phương thức chuyển đổi tên item hỗ trợ cả &0-&f, &#rrggbb, §0-§f và thẻ MiniMessage
+  public Component parseItemName(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
-    return minecraftLegacySerializer.deserialize(input.replace('§', '&')).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
+    String converted = legacyToMiniMessage(input);
+    return miniMessage.deserialize(converted).decoration(TextDecoration.ITALIC, false);
   }
 
   public Component parse(String input, TagResolver... resolvers) {
