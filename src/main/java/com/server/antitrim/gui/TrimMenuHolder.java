@@ -102,7 +102,7 @@ public class TrimMenuHolder implements InventoryHolder {
     ItemStack btn = plugin.getHatManager().createCleanIconStack(mat);
     ItemMeta meta = btn.getItemMeta();
     if (meta != null) {
-      meta.displayName(plugin.parse(plugin.getItemSpriteTag(mat) + " " + titleMini));
+      meta.displayName(plugin.parse(titleMini));
       if (lore != null) meta.lore(lore);
       btn.setItemMeta(meta);
     }
@@ -119,8 +119,8 @@ public class TrimMenuHolder implements InventoryHolder {
     if (list == null || list.isEmpty()) {
       return List.of(
           "",
-          "<white><sprite:items:item/gray_dye></white> <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold> <#6c7086>▸ <#f38ba8>Cannot select (No Permission)",
-          "<white><sprite:items:item/name_tag></white> <#a6adc8>ʀᴇꞯᴜɪʀᴇᴅ ʀᴀɴᴋ <#6c7086>▸ <rank>"
+          "<#f38ba8>● Cannot Select (No Permission)",
+          "<#a6adc8>Required Rank: <rank>"
       );
     }
     return list;
@@ -153,8 +153,8 @@ public class TrimMenuHolder implements InventoryHolder {
     };
     if (hasPerm) {
       String statusRaw = selected
-          ? plugin.getConfig().getString("gui.selected-status", "<white><sprite:items:item/lime_dye></white> <#a6e3a1>ѕᴛᴀᴛᴜѕ <#6c7086>▸ <#a6e3a1><bold>Selected</bold> <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
-          : plugin.getConfig().getString("gui.unselected-status", "<white><sprite:items:item/ender_pearl></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Select & Equip <#6c7086>(ᴜɴѕᴇʟᴇᴄᴛᴇᴅ)");
+          ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
+          : plugin.getConfig().getString("gui.unselected-status", "<glyph:left_click> <#89dceb>Click to Select");
       lore.add(plugin.parse(statusRaw));
     } else {
       for (String line : getLockedLoreTemplate(plugin)) {
