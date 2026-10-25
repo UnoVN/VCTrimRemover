@@ -33,7 +33,7 @@ public class DecorHubGui implements Listener {
 
   public static void open(AntiArmorTrim plugin, Player player) {
     ensureRegistered(plugin);
-    Component title = plugin.parse(plugin.getConfig().getString("gui.decor-title", "<white><sprite:items:item/amethyst_shard></white> <#cba6f7><bold>ᴅᴇᴄᴏʀᴀᴛɪᴏɴ ѕᴛᴜᴅɪᴏ</bold> <#6c7086>▪ <#a6adc8>Hub"));
+    Component title = plugin.parse(plugin.getConfig().getString("gui.decor-title", "<#cba6f7><bold>Decoration Studio</bold> <#6c7086>| <#a6adc8>Hub"));
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.DECOR_HUB, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
@@ -43,56 +43,56 @@ public class DecorHubGui implements Listener {
 
     // Slot 10 - Armor Trim Studio
     List<Component> trimLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ᴄᴜѕᴛᴏᴍɪᴢᴇ automatic <#cdd6f4>Armor Trims"),
-        plugin.parse("<#a6adc8>ᴀɴᴅ <#cdd6f4>Materials <#a6adc8>ꜰᴏʀ ʏᴏᴜʀ ɢᴇᴀʀ."),
+        plugin.parse("<#a6adc8>Customize automatic Armor Trims"),
+        plugin.parse("<#a6adc8>and Materials for your gear."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/compass></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open Trim Studio")));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open Trim Studio")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, trimLore, AntiArmorTrim.BYPASS_PERM);
-    inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE, "<#cba6f7><bold>ᴀʀᴍᴏʀ ᴛʀɪᴍ</bold> <#6c7086>▪ <#cdd6f4>Studio", trimLore));
+    inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE, "<#cba6f7><bold>Armor Trim Studio</bold>", trimLore));
 
     // Slot 11 - Custom Hat Studio
     List<Component> hatLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ᴛʀᴀɴѕꜰᴏʀᴍ ʏᴏᴜʀ <#89dceb>Diamond <#a6adc8>ᴏʀ <#cba6f7>Netherite"),
-        plugin.parse("<#a6adc8>ʜᴇʟᴍᴇᴛ ɪɴᴛᴏ ᴀ <#f9e2af>3D Nexo Hat<#a6adc8>."),
+        plugin.parse("<#a6adc8>Transform your Diamond or Netherite"),
+        plugin.parse("<#a6adc8>helmet into a 3D Nexo Hat."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/compass></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open Hat Studio")));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open Hat Studio")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, hatLore, AntiArmorTrim.HAT_PERM);
-    inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.NETHERITE_HELMET, "<#f9e2af><bold>ᴄᴜѕᴛᴏᴍ ʜᴀᴛ</bold> <#6c7086>▪ <#cdd6f4>Studio", hatLore));
+    inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.NETHERITE_HELMET, "<#f9e2af><bold>Custom Hat Studio</bold>", hatLore));
 
     // Slot 12 - Classic Kill Effect
     List<Component> classicKeLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ѕᴇʟᴇᴄᴛ classic <#fab387>Particle Effects"),
-        plugin.parse("<#a6adc8>ꜰʀᴏᴍ ᴛʜᴇ ѕᴇʀᴠᴇʀ'ѕ ᴄʟᴀѕѕɪᴄ ᴍᴇɴᴜ."),
+        plugin.parse("<#a6adc8>Select classic particle effects"),
+        plugin.parse("<#a6adc8>from the server's classic menu."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/firework_rocket></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open /killeffects")));
-    inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.FIREWORK_ROCKET, "<#fab387><bold>ᴄʟᴀѕѕɪᴄ ᴋɪʟʟᴇꜰꜰᴇᴄᴛ</bold> <#6c7086>▪ <#cdd6f4>Menu", classicKeLore));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Run /killeffects")));
+    inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.FIREWORK_ROCKET, "<#fab387><bold>Classic KillEffect</bold>", classicKeLore));
 
     // Slot 14 - 3D KillEffect Studio
     List<Component> ke3dLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ᴄʜᴏᴏѕᴇ ᴀɴ ᴀɴɪᴍᴀᴛᴇᴅ <#eba0ac>3D Model Effect"),
-        plugin.parse("<#a6adc8>ᴡɪᴛʜ <#cdd6f4>Victim Skin <#a6adc8>& custom particles."),
+        plugin.parse("<#a6adc8>Choose an animated 3D Model Effect"),
+        plugin.parse("<#a6adc8>with victim skin & custom particles."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/compass></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open 3D KillEffect Studio")));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open 3D KillEffect Studio")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, ke3dLore, AntiArmorTrim.KILLEFFECT_PERM);
-    inv.setItem(14, TrimMenuHolder.createStyledButton(plugin, Material.TOTEM_OF_UNDYING, "<#eba0ac><bold>3ᴅ ᴋɪʟʟᴇꜰꜰᴇᴄᴛ</bold> <#6c7086>▪ <#cdd6f4>Studio", ke3dLore));
+    inv.setItem(14, TrimMenuHolder.createStyledButton(plugin, Material.TOTEM_OF_UNDYING, "<#eba0ac><bold>3D KillEffect Studio</bold>", ke3dLore));
 
     // Slot 15 - KillSound Studio
     List<Component> ksLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ѕᴇʟᴇᴄᴛ ᴀ custom <#a6e3a1>Nexo Sound Effect"),
-        plugin.parse("<#a6adc8>ᴘʟᴀʏᴇᴅ ᴡʜᴇɴ ʏᴏᴜ <#cdd6f4>Eliminate <#a6adc8>ᴀ ᴘʟᴀʏᴇʀ."),
+        plugin.parse("<#a6adc8>Select a custom Nexo sound effect"),
+        plugin.parse("<#a6adc8>played when you eliminate a player."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/compass></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open KillSound Studio")));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open KillSound Studio")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, ksLore, AntiArmorTrim.KILLSOUND_PERM);
-    inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.MUSIC_DISC_OTHERSIDE, "<#a6e3a1><bold>ᴋɪʟʟѕᴏᴜɴᴅ</bold> <#6c7086>▪ <#cdd6f4>Studio", ksLore));
+    inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.MUSIC_DISC_OTHERSIDE, "<#a6e3a1><bold>KillSound Studio</bold>", ksLore));
 
     // Slot 16 - Item Rename Studio
     List<Component> renameLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>ʀᴇɴᴀᴍᴇ ᴛʜᴇ ɪᴛᴇᴍ ɪɴ ʏᴏᴜʀ <#74c7ec>Main Hand"),
-        plugin.parse("<#a6adc8>ᴜѕɪɴɢ <#cdd6f4>Color & Hex Codes <#6c7086>(&0-&f, &#hex)<#a6adc8>."),
+        plugin.parse("<#a6adc8>Rename the item in your Main Hand"),
+        plugin.parse("<#a6adc8>using color codes (&0-&f, &#hex)."),
         Component.empty(),
-        plugin.parse("<white><sprite:items:item/compass></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open Rename Studio")));
+        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open Rename Studio")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, renameLore, AntiArmorTrim.RENAME_PERM);
-    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#74c7ec><bold>ɪᴛᴇᴍ ʀᴇɴᴀᴍᴇ</bold> <#6c7086>▪ <#cdd6f4>Studio", renameLore));
+    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#74c7ec><bold>Item Rename Studio</bold>", renameLore));
 
     player.openInventory(inv);
   }
