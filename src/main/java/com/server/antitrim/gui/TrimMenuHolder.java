@@ -59,8 +59,12 @@ public class TrimMenuHolder implements InventoryHolder {
     addMaterial("gold", "Gold", "#f9e2af", Material.GOLD_INGOT);
     addMaterial("emerald", "Emerald", "#a6e3a1", Material.EMERALD);
     addMaterial("diamond", "Diamond", "#89dceb", Material.DIAMOND);
-    addMaterial("lapis", "Lapis", "#89b4fa", Material.LAPIS_LAZULI);
+    addMaterial("lapis", "Lapis", "#89b4fa", Material.LAPIS_LAZZULI_PLACEHOLDER());
     addMaterial("amethyst", "Amethyst", "#cba6f7", Material.AMETHYST_SHARD);
+  }
+
+  private static Material LAPIS_LAZZULI_PLACEHOLDER() {
+    return Material.LAPIS_LAZULI;
   }
 
   private static void addPattern(String key, String name, Material icon) { PATTERNS.put(key, new PatternOption(key, name, icon)); }
@@ -114,6 +118,18 @@ public class TrimMenuHolder implements InventoryHolder {
     return createStyledButton(plugin, Material.ARROW, titleMini, null);
   }
 
+  public static List<String> getLockedLoreTemplate(AntiArmorTrim plugin) {
+    List<String> list = plugin.getConfig().getStringList("gui.no-permission-lore");
+    if (list == null || list.isEmpty()) {
+      return List.of(
+          "",
+          "<white><sprite:items:item/gray_dye></white> <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold> <#6c7086>▸ <#f38ba8>Cannot select (No Permission)",
+          "<white><sprite:items:item/name_tag></white> <#a6adc8>ʀᴇꞯᴜɪʀᴇᴅ ʀᴀɴᴋ <#6c7086>▸ <rank>"
+      );
+    }
+    return list;
+  }
+
   public static void appendLockedLoreIfNeeded(AntiArmorTrim plugin, Player player, List<Component> lore, String requiredPerm) {
     boolean hasPerm = switch (requiredPerm) {
       case AntiArmorTrim.RENAME_PERM -> plugin.getRenameManager().canUseRename(player);
@@ -124,7 +140,7 @@ public class TrimMenuHolder implements InventoryHolder {
       default -> player.isOp() || player.hasPermission(requiredPerm);
     };
     if (!hasPerm) {
-      for (String line : plugin.getConfig().getStringList("gui.no-permission-lore")) {
+      for (String line : getLockedLoreTemplate(plugin)) {
         lore.add(plugin.parseWithPerm(line, requiredPerm));
       }
     }
@@ -141,11 +157,11 @@ public class TrimMenuHolder implements InventoryHolder {
     };
     if (hasPerm) {
       String statusRaw = selected
-          ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
-          : plugin.getConfig().getString("gui.unselected-status", "<#6c7086>○ Unselected");
+          ? plugin.getConfig().getString("gui.selected-status", "<white><sprite:items:item/lime_dye></white> <#a6e3a1>ѕᴛᴀᴛᴜѕ <#6c7086>▸ <#a6e3a1><bold>Selected</bold> <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
+          : plugin.getConfig().getString("gui.unselected-status", "<white><sprite:items:item/ender_pearl></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Select & Equip <#6c7086>(ᴜɴѕᴇʟᴇᴄᴛᴇᴅ)");
       lore.add(plugin.parse(statusRaw));
     } else {
-      for (String line : plugin.getConfig().getStringList("gui.no-permission-lore")) {
+      for (String line : getLockedLoreTemplate(plugin)) {
         lore.add(plugin.parseWithPerm(line, requiredPerm));
       }
     }
