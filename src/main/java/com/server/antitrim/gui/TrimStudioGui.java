@@ -38,7 +38,7 @@ public class TrimStudioGui implements Listener {
 
   public static void openMain(AntiArmorTrim plugin, Player player) {
     ensureRegistered(plugin);
-    Component title = plugin.parse(plugin.getConfig().getString("gui.main-title", "<#cba6f7><bold>Armor Trim Studio</bold>"));
+    Component title = plugin.parse(plugin.getConfig().getString("gui.main-title", "<white><sprite:items:item/silence_armor_trim_smithing_template></white> <#cba6f7><bold>ᴀʀᴍᴏʀ ᴛʀɪᴍ ѕᴛᴜᴅɪᴏ</bold>"));
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.TRIM_MAIN, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
@@ -50,7 +50,7 @@ public class TrimStudioGui implements Listener {
     inv.setItem(12, createMainSlotIcon(plugin, player, EquipmentSlot.CHEST, Material.NETHERITE_CHESTPLATE));
     inv.setItem(14, createMainSlotIcon(plugin, player, EquipmentSlot.LEGS, Material.NETHERITE_LEGGINGS));
     inv.setItem(16, createMainSlotIcon(plugin, player, EquipmentSlot.FEET, Material.NETHERITE_BOOTS));
-    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
+    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Hub"));
     player.openInventory(inv);
   }
 
@@ -58,7 +58,7 @@ public class TrimStudioGui implements Listener {
     ensureRegistered(plugin);
     String slotName = getSlotEnglishName(slot);
     Material previewMat = getPreviewMaterial(slot);
-    String rawTitle = plugin.getConfig().getString("gui.slot-title", "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>");
+    String rawTitle = plugin.getConfig().getString("gui.slot-title", "<slot_icon> <#cba6f7><bold>ᴛʀɪᴍ ᴇᴅɪᴛᴏʀ</bold> <#6c7086>▸ <#74c7ec><slot>");
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.TRIM_SLOT, slot, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 54, plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", plugin.getItemSpriteTag(previewMat))));
     holder.setInventory(inv);
@@ -83,15 +83,17 @@ public class TrimStudioGui implements Listener {
       inv.setItem(matSlots[mIndex++], createMaterialIcon(plugin, player, mOpt, mOpt.key().equalsIgnoreCase(currentMaterial)));
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Slots"));
 
-    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Disable auto-trim and clear active trim.")));
+    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>ᴅɪѕᴀʙʟᴇ auto-trim & clear <#cdd6f4>Active Trim<#a6adc8>.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, clearLore, AntiArmorTrim.BYPASS_PERM);
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Reset & Clear Trim</bold>", clearLore));
+    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>ʀᴇѕᴇᴛ</bold> <#6c7086>▸ <#cdd6f4>Clear Trim", clearLore));
 
-    List<Component> allLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Sync this slot's state (Trim or Reset)"), plugin.parse("<#a6adc8>to Helmet, Chestplate, Leggings & Boots.")));
+    List<Component> allLore = new ArrayList<>(List.of(
+        plugin.parse("<#a6adc8>ѕʏɴᴄ ᴛʜɪѕ ѕʟᴏᴛ'ѕ <#cdd6f4>Pattern & Material"),
+        plugin.parse("<#a6adc8>ᴛᴏ <#cba6f7>All 4 Armor Pieces<#a6adc8>.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, allLore, AntiArmorTrim.BYPASS_PERM);
-    inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#cba6f7><bold>Sync to All 4 Pieces</bold>", allLore));
+    inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#cba6f7><bold>ѕʏɴᴄ</bold> <#6c7086>▸ <#cdd6f4>All 4 Pieces", allLore));
 
     player.openInventory(inv);
   }
@@ -102,7 +104,7 @@ public class TrimStudioGui implements Listener {
     if (meta == null) return item;
 
     plugin.getHatManager().hideAllVanillaTooltips(meta);
-    meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " <#74c7ec><bold>" + getSlotEnglishName(slot) + " Trim</bold>"));
+    meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " <#74c7ec><bold>" + getSlotEnglishName(slot) + " <#a6adc8>ᴛʀɪᴍ</bold>"));
 
     String patternKey = plugin.getHatManager().getSavedPatternKey(player, slot);
     String materialKey = plugin.getHatManager().getSavedMaterialKey(player, slot);
@@ -113,10 +115,10 @@ public class TrimStudioGui implements Listener {
     String patternDisplay = pOpt != null ? plugin.getItemSpriteTag(pOpt.icon()) + " <#89dceb>" + pOpt.name() : "<#6c7086>None";
     String materialDisplay = mOpt != null ? plugin.getItemSpriteTag(mOpt.icon()) + " <" + mOpt.hexColor() + ">" + mOpt.name() : "<#6c7086>None";
 
-    lore.add(plugin.parse("<#a6adc8>Pattern: " + patternDisplay));
-    lore.add(plugin.parse("<#a6adc8>Material: " + materialDisplay));
+    lore.add(plugin.parse("<#a6adc8>ᴘᴀᴛᴛᴇʀɴ <#6c7086>▸ " + patternDisplay));
+    lore.add(plugin.parse("<#a6adc8>ᴍᴀᴛᴇʀɪᴀʟ <#6c7086>▸ " + materialDisplay));
     if (slot == EquipmentSlot.HEAD && plugin.getHatManager().getEffectiveHatId(player) != null) {
-      lore.add(plugin.parse("<#fab387>Custom Hat Active (Trim Paused)"));
+      lore.add(plugin.parse("<white><sprite:items:item/bell></white> <#fab387>Custom Hat Active <#6c7086>(Trim Paused)"));
     }
 
     if (meta instanceof ArmorMeta armorMeta && pOpt != null && mOpt != null) {
@@ -132,11 +134,19 @@ public class TrimStudioGui implements Listener {
   }
 
   private static ItemStack createPatternIcon(AntiArmorTrim plugin, Player player, TrimMenuHolder.PatternOption opt, boolean selected) {
-    ItemStack item = plugin.getHatManager().createCleanIconStack(opt.icon());
+    boolean unlocked = plugin.getHatManager().canUseBypass(player);
+    Material mat = unlocked ? opt.icon() : Material.GRAY_DYE;
+    ItemStack item = plugin.getHatManager().createCleanIconStack(mat);
     ItemMeta meta = item.getItemMeta();
     if (meta == null) return item;
-    meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<#89dceb>") + opt.name() + " Trim"));
-    if (selected) meta.setEnchantmentGlintOverride(true);
+
+    if (unlocked) {
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<#89dceb>") + opt.name() + " <#a6adc8>ᴛʀɪᴍ"));
+      if (selected) meta.setEnchantmentGlintOverride(true);
+    } else {
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.GRAY_DYE) + " <#89dceb>" + opt.name() + " <#a6adc8>ᴛʀɪᴍ <#6c7086>• <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold>"));
+    }
+
     List<Component> lore = new ArrayList<>();
     TrimMenuHolder.appendSelectionOrLockedLore(plugin, player, lore, AntiArmorTrim.BYPASS_PERM, selected);
     meta.lore(lore);
@@ -146,11 +156,19 @@ public class TrimStudioGui implements Listener {
   }
 
   private static ItemStack createMaterialIcon(AntiArmorTrim plugin, Player player, TrimMenuHolder.MaterialOption opt, boolean selected) {
-    ItemStack item = plugin.getHatManager().createCleanIconStack(opt.icon());
+    boolean unlocked = plugin.getHatManager().canUseBypass(player);
+    Material mat = unlocked ? opt.icon() : Material.GRAY_DYE;
+    ItemStack item = plugin.getHatManager().createCleanIconStack(mat);
     ItemMeta meta = item.getItemMeta();
     if (meta == null) return item;
-    meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<" + opt.hexColor() + ">") + opt.name() + " Material"));
-    if (selected) meta.setEnchantmentGlintOverride(true);
+
+    if (unlocked) {
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<" + opt.hexColor() + ">") + opt.name() + " <#a6adc8>ᴍᴀᴛᴇʀɪᴀʟ"));
+      if (selected) meta.setEnchantmentGlintOverride(true);
+    } else {
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.GRAY_DYE) + " <" + opt.hexColor() + ">" + opt.name() + " <#a6adc8>ᴍᴀᴛᴇʀɪᴀʟ <#6c7086>• <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold>"));
+    }
+
     List<Component> lore = new ArrayList<>();
     TrimMenuHolder.appendSelectionOrLockedLore(plugin, player, lore, AntiArmorTrim.BYPASS_PERM, selected);
     meta.lore(lore);
