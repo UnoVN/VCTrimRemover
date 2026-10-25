@@ -62,11 +62,6 @@ public class CombatTracker implements Listener {
     }
   }
 
-  /**
-   * Bắt sự kiện mũi tên chạm vào thực thể.
-   * Kích nổ TNT Minecart ngay lập tức kể cả khi chỉ nhấp nhẹ cung (tap-shot không cần full charge),
-   * đồng thời ghi nhận vũ khí cung đã bắn.
-   */
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onProjectileHit(ProjectileHitEvent event) {
     Entity hitEntity = event.getHitEntity();
@@ -247,9 +242,7 @@ public class CombatTracker implements Listener {
 
   /**
    * Định dạng tin nhắn chết:
-   * - Nạn nhân chết do người khác: "<Victim> was blown up by <Killer> using [Tên Cung]"
-   * - Tự sát bằng vụ nổ của chính mình: "<Player> was blown up by [Tên Cung]"
-   * - Hover hiển thị toàn bộ tooltip của vũ khí đã đổi tên.
+   * Chữ 'using' và dấu ngoặc vuông '[ ]' đều có màu trắng (NamedTextColor.WHITE).
    */
   @EventHandler(priority = EventPriority.HIGHEST)
   public void onPlayerDeathMessage(PlayerDeathEvent event) {
@@ -273,29 +266,27 @@ public class CombatTracker implements Listener {
       String plainName = PlainTextComponentSerializer.plainText().serialize(weaponName);
       if (plainMsg.contains(plainName)) return;
 
-      Component weaponWithHover = Component.text("[")
+      // Cặp ngoặc vuông màu trắng chuẩn, chứa tên item có màu riêng của nó
+      Component weaponWithHover = Component.text("[", NamedTextColor.WHITE)
           .append(weaponName)
-          .append(Component.text("]"))
-          .color(NamedTextColor.WHITE)
+          .append(Component.text("]", NamedTextColor.WHITE))
           .hoverEvent(weapon.asHoverEvent());
 
       Component finalMsg;
       boolean isSelf = killer.getUniqueId().equals(victim.getUniqueId());
 
       if (isSelf) {
-        // Trường hợp tự sát bằng vụ nổ do mình bắn ra:
-        // Đưa về định dạng chuẩn: "<Player> was blown up by [Tên Cung]"
+        // Trường hợp tự sát:
         if (plainMsg.endsWith("blew up") || plainMsg.contains("blew up")) {
-          finalMsg = Component.text(victim.getName() + " was blown up by ")
-              .color(NamedTextColor.WHITE)
+          finalMsg = Component.text(victim.getName() + " was blown up by ", NamedTextColor.WHITE)
               .append(weaponWithHover);
         } else {
-          finalMsg = originalMsg.append(Component.text(" using ").color(NamedTextColor.GRAY))
+          finalMsg = originalMsg.append(Component.text(" using ", NamedTextColor.WHITE))
               .append(weaponWithHover);
         }
       } else {
-        // Trường hợp PvP giết đối thủ:
-        finalMsg = originalMsg.append(Component.text(" using ").color(NamedTextColor.GRAY))
+        // Trường hợp PvP:
+        finalMsg = originalMsg.append(Component.text(" using ", NamedTextColor.WHITE))
             .append(weaponWithHover);
       }
 
