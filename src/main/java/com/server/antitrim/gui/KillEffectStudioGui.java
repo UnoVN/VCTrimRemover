@@ -4,6 +4,7 @@ import com.server.antitrim.AntiArmorTrim;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -507,3 +508,299 @@ public class KillEffectStudioGui implements Listener {
         ItemStack clicked = event.getCurrentItem();
         if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
         String effectId = clicked.getItemMeta().getPersistentDataContainer().get(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING);
+        if (effectId == null) return;
+
+        if (event.isRightClick()) {
+          if (plugin.removeKillEffectFromDb(effectId)) {
+            player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+            player.sendMessage(plugin.getMessage("hat-admin-removed", Placeholder.unparsed("id", effectId)));
+          }
+          openAdminMenu(plugin, player, page);
+          return;
+        }
+        if (event.isShiftClick()) {
+          plugin.getKillEffectManager().setForceDefaultKillEffect(player, effectId, true);
+          openAdminMenu(plugin, player, page);
+          return;
+        }
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openEditorMenu(plugin, player, effectId);
+      }
+      return;
+    }
+
+    if (type == TrimMenuHolder.MenuType.KILLEFFECT_GROUP_LIST) {
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
+      if (slot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openAdminMenu(plugin, player, 0); return; }
+      if (slot == 47 && page > 0) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openGroupListMenu(plugin, player, page - 1); return; }
+      if (slot == 51) {
+        ItemStack next = event.getCurrentItem();
+        if (next != null && next.getType() != Material.BLACK_STAINED_GLASS_PANE && !next.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openGroupListMenu(plugin, player, page + 1);
+        }
+        return;
+      }
+      if (slot == 49) {
+        player.closeInventory();
+        pendingCreateKillEffectGroupPlayers.add(player.getUniqueId());
+        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("hat-admin-prompt-group"));
+        return;
+      }
+      if (slot < 36) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
+        String permNode = clicked.getItemMeta().getPersistentDataContainer().get(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING);
+        if (permNode == null) return;
+
+        if (event.isRightClick()) {
+          plugin.deleteDbKillEffectGroup(permNode);
+          player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-deleted", Placeholder.unparsed("perm", permNode)));
+          openGroupListMenu(plugin, player, page);
+          return;
+        }
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openGroupSelectorMenu(plugin, player, permNode, 0);
+      }
+      return;
+    }
+
+    if (type == TrimMenuHolder.MenuType.KILLEFFECT_GROUP_SELECTOR) {
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
+      String permNode = holder.getEditingId();
+      if (permNode == null) return;
+
+      if (slot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openGroupListMenu(plugin, player, 0); return; }
+      if (slot == 47 && page > 0) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openGroupSelectorMenu(plugin, player, permNode, page - 1); return; }
+      if (slot == 51) {
+        ItemStack next = event.getCurrentItem();
+        if (next != null && next.getType() != Material.BLACK_STAINED_GLASS_PANE && !next.getType().isAir()) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+          openGroupSelectorMenu(plugin, player, permNode, page + 1);
+        }
+        return;
+      }
+      if (slot < 36) {
+        ItemStack clicked = event.getCurrentItem();
+        if (clicked == null || clicked.getType().isAir() || clicked.getItemMeta() == null) return;
+        String effectId = clicked.getItemMeta().getPersistentDataContainer().get(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING);
+        if (effectId == null) return;
+
+        boolean added = plugin.toggleKillEffectInDbGroup(permNode, effectId);
+        if (added) {
+          player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-hat-added", Placeholder.unparsed("id", effectId), Placeholder.unparsed("perm", permNode)));
+        } else {
+          player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-group-hat-removed", Placeholder.unparsed("id", effectId), Placeholder.unparsed("perm", permNode)));
+        }
+        openGroupSelectorMenu(plugin, player, permNode, page);
+      }
+      return;
+    }
+
+    if (type == TrimMenuHolder.MenuType.KILLEFFECT_EDITOR) {
+      if (!plugin.hasAdminPerm(player)) { player.closeInventory(); return; }
+      String effectId = holder.getEditingId();
+      if (effectId == null) return;
+
+      if (slot == 18) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); openAdminMenu(plugin, player, 0); return; }
+      if (slot == 10) {
+        if (event.isRightClick()) {
+          plugin.setKillEffectNameInDb(effectId, null);
+          player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-name-reset", Placeholder.unparsed("id", effectId)));
+          openEditorMenu(plugin, player, effectId);
+          return;
+        }
+        player.closeInventory();
+        pendingKillEffectNameEdit.put(player.getUniqueId(), effectId);
+        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("hat-admin-prompt-name", Placeholder.unparsed("id", effectId)));
+        return;
+      }
+      if (slot == 11) {
+        if (event.isRightClick()) {
+          plugin.setKillEffectLoreInDb(effectId, null);
+          player.playSound(player.getLocation(), Sound.BLOCK_GRINDSTONE_USE, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-lore-reset", Placeholder.unparsed("id", effectId)));
+          openEditorMenu(plugin, player, effectId);
+          return;
+        }
+        player.closeInventory();
+        pendingKillEffectLoreEdit.put(player.getUniqueId(), effectId);
+        player.playSound(player.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("hat-admin-prompt-lore", Placeholder.unparsed("id", effectId)));
+        return;
+      }
+      if (slot == 12) {
+        player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+        openGroupListMenu(plugin, player, 0);
+        return;
+      }
+      if (slot == 14) {
+        plugin.getKillEffectManager().playPreviewKillEffect(player, effectId);
+        player.sendMessage(plugin.getMessage("killeffect-preview", Placeholder.component("effect", plugin.getKillEffectManager().getKillEffectDisplayName(effectId))));
+        return;
+      }
+      if (slot == 15) {
+        plugin.getKillEffectManager().setForceDefaultKillEffect(player, event.isRightClick() ? null : effectId, !event.isRightClick());
+        openEditorMenu(plugin, player, effectId);
+        return;
+      }
+      if (slot == 16) {
+        if (plugin.removeKillEffectFromDb(effectId)) {
+          player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
+          player.sendMessage(plugin.getMessage("hat-admin-removed", Placeholder.unparsed("id", effectId)));
+        }
+        openAdminMenu(plugin, player, 0);
+      }
+    }
+  }
+
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onChatInput(AsyncChatEvent event) {
+    Player player = event.getPlayer();
+    UUID uuid = player.getUniqueId();
+
+    if (pendingCreateKillEffectGroupPlayers.remove(uuid)) {
+      event.setCancelled(true);
+      String rawPerm = null;
+      try {
+        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+          rawPerm = event.signedMessage().message().trim();
+        }
+      } catch (Throwable ignored) {}
+      if (rawPerm == null || rawPerm.isBlank()) {
+        rawPerm = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+      }
+      final String finalPerm = rawPerm;
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!player.isOnline()) return;
+        if (finalPerm.equalsIgnoreCase("cancel")) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+          player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+          openGroupListMenu(plugin, player, 0);
+          return;
+        }
+        String normalized = plugin.normalizePermNode(finalPerm);
+        plugin.createDbKillEffectGroup(normalized);
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        player.sendMessage(plugin.getMessage("hat-admin-group-created", Placeholder.unparsed("perm", normalized)));
+        openGroupSelectorMenu(plugin, player, normalized, 0);
+      });
+      return;
+    }
+
+    if (pendingAddKillEffectPlayers.remove(uuid)) {
+      event.setCancelled(true);
+      String rawId = null;
+      try {
+        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+          rawId = event.signedMessage().message().trim();
+        }
+      } catch (Throwable ignored) {}
+      if (rawId == null || rawId.isBlank()) {
+        rawId = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+      }
+      final String finalId = rawId;
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!player.isOnline()) return;
+        if (finalId.equalsIgnoreCase("cancel")) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+          player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+          openAdminMenu(plugin, player, 0);
+          return;
+        }
+        if (plugin.getDbKillEffectItems().stream().anyMatch(s -> s.equalsIgnoreCase(finalId))) {
+          player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 1f);
+          player.sendMessage(plugin.getMessage("hat-admin-exists", Placeholder.unparsed("id", finalId)));
+          openAdminMenu(plugin, player, 0);
+          return;
+        }
+        plugin.addKillEffectToDb(finalId);
+        player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+        player.sendMessage(plugin.getMessage("killeffect-admin-added", Placeholder.unparsed("id", finalId)));
+        openEditorMenu(plugin, player, finalId);
+      });
+      return;
+    }
+
+    String editingNameEffectId = pendingKillEffectNameEdit.remove(uuid);
+    if (editingNameEffectId != null) {
+      event.setCancelled(true);
+      String rawInput = null;
+      try {
+        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+          rawInput = event.signedMessage().message().trim();
+        }
+      } catch (Throwable ignored) {}
+      if (rawInput == null || rawInput.isBlank()) {
+        rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+      }
+      final String finalInput = rawInput;
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!player.isOnline()) return;
+        if (finalInput.equalsIgnoreCase("cancel")) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+          player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+          openEditorMenu(plugin, player, editingNameEffectId);
+          return;
+        }
+        plugin.setKillEffectNameInDb(editingNameEffectId, finalInput);
+        player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1.3f);
+        player.sendMessage(plugin.getMessage("hat-admin-name-updated", Placeholder.unparsed("id", editingNameEffectId), Placeholder.component("name", plugin.parse(finalInput))));
+        openEditorMenu(plugin, player, editingNameEffectId);
+      });
+      return;
+    }
+
+    String editingLoreEffectId = pendingKillEffectLoreEdit.remove(uuid);
+    if (editingLoreEffectId != null) {
+      event.setCancelled(true);
+      String rawInput = null;
+      try {
+        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+          rawInput = event.signedMessage().message().trim();
+        }
+      } catch (Throwable ignored) {}
+      if (rawInput == null || rawInput.isBlank()) {
+        rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+      }
+      final String finalInput = rawInput;
+      Bukkit.getScheduler().runTask(plugin, () -> {
+        if (!player.isOnline()) return;
+        if (finalInput.equalsIgnoreCase("cancel")) {
+          player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 0.8f);
+          player.sendMessage(plugin.getMessage("hat-admin-cancelled"));
+          openEditorMenu(plugin, player, editingLoreEffectId);
+          return;
+        }
+        List<String> newLore;
+        if (finalInput.regionMatches(true, 0, "add ", 0, 4)) {
+          List<String> existing = plugin.getDbKillEffectLore(editingLoreEffectId);
+          newLore = existing != null ? new ArrayList<>(existing) : new ArrayList<>();
+          newLore.add(finalInput.substring(4).trim());
+        } else {
+          newLore = new ArrayList<>(Arrays.asList(finalInput.split("\\|")));
+          newLore.replaceAll(String::trim);
+        }
+        plugin.setKillEffectLoreInDb(editingLoreEffectId, newLore);
+        player.playSound(player.getLocation(), Sound.ITEM_BOOK_PAGE_TURN, 1f, 1.2f);
+        player.sendMessage(plugin.getMessage("hat-admin-lore-updated", Placeholder.unparsed("id", editingLoreEffectId)));
+        openEditorMenu(plugin, player, editingLoreEffectId);
+      });
+    }
+  }
+
+  @EventHandler
+  public void onQuit(PlayerQuitEvent event) {
+    UUID uuid = event.getPlayer().getUniqueId();
+    pendingAddKillEffectPlayers.remove(uuid);
+    pendingCreateKillEffectGroupPlayers.remove(uuid);
+    pendingKillEffectNameEdit.remove(uuid);
+    pendingKillEffectLoreEdit.remove(uuid);
+  }
+}
