@@ -10,7 +10,6 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
-import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
@@ -113,7 +112,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     });
     return MiniMessage.builder()
         .tags(TagResolver.builder()
-            .resolver(StandardTags.all())
+            .resolver(TagResolver.standard())
             .resolver(glyphResolver)
             .build())
         .build();
@@ -799,6 +798,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return Collections.emptyList();
   }
 
+  public String getItemSpriteTag(Material material) {
+    if (material == null) return "";
+    return "<white><sprite:items:item/" + material.getKey().getKey() + "></white>";
+  }
+
   public Component parseLiteral(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
     return miniMessage.deserialize(input).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
@@ -900,135 +904,5 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     }
     codeMatcher.appendTail(finalSb);
     return finalSb.toString();
-  }
-
-  @Override
-  public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
-    String cmdName = command.getName().toLowerCase();
-    if (cmdName.equals("decor")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      com.server.antitrim.gui.DecorHubGui.open(this, p);
-      return true;
-    }
-    if (cmdName.equals("trim")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      com.server.antitrim.gui.TrimStudioGui.openMain(this, p);
-      return true;
-    }
-    if (cmdName.equals("hat")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      com.server.antitrim.gui.HatStudioGui.handleCommand(this, p, args);
-      return true;
-    }
-    if (cmdName.equals("killeffect")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      com.server.antitrim.gui.KillEffectStudioGui.handleCommand(this, p, args);
-      return true;
-    }
-    if (cmdName.equals("killsound")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      com.server.antitrim.gui.KillSoundStudioGui.handleCommand(this, p, args);
-      return true;
-    }
-    if (cmdName.equals("rename")) {
-      if (!(sender instanceof Player p)) { sender.sendMessage(getMessage("only-players")); return true; }
-      if (args.length == 0) com.server.antitrim.gui.RenameStudioGui.open(this, p);
-      else renameManager.applyItemRename(p, String.join(" ", args));
-      return true;
-    }
-    if (args.length > 0) {
-      if (args[0].equalsIgnoreCase("reload")) {
-        if (!hasAdminPerm(sender)) { sender.sendMessage(getMessage("no-permission")); return true; }
-        reloadConfig();
-        loadDatabase();
-        forceTakeoverCommands();
-        if (trimListener != null) {
-          for (World world : Bukkit.getWorlds()) trimListener.lockAlwaysDaytime(world);
-        }
-        for (Player online : Bukkit.getOnlinePlayers()) {
-          hatManager.forceRefreshEquippedHat(online);
-          hatManager.applyAllSavedTrims(online);
-        }
-        sender.sendMessage(getMessage("reload-success"));
-        return true;
-      }
-      if (args[0].equalsIgnoreCase("groups") && sender instanceof Player p) {
-        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        com.server.antitrim.gui.HatStudioGui.openGroupListMenu(this, p, 0);
-        return true;
-      }
-      if ((args[0].equalsIgnoreCase("killeffects") || args[0].equalsIgnoreCase("ke") || args[0].equalsIgnoreCase("kfx")) && sender instanceof Player p) {
-        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        com.server.antitrim.gui.KillEffectStudioGui.openAdminMenu(this, p, 0);
-        return true;
-      }
-      if ((args[0].equalsIgnoreCase("killsounds") || args[0].equalsIgnoreCase("ks")) && sender instanceof Player p) {
-        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        com.server.antitrim.gui.KillSoundStudioGui.openAdminMenu(this, p, 0);
-        return true;
-      }
-      if ((args[0].equalsIgnoreCase("hats") || args[0].equalsIgnoreCase("hat") || args[0].equalsIgnoreCase("admin")) && sender instanceof Player p) {
-        if (!hasAdminPerm(p)) { p.sendMessage(getMessage("no-permission")); return true; }
-        com.server.antitrim.gui.HatStudioGui.openAdminMenu(this, p, 0);
-        return true;
-      }
-    }
-    sender.sendMessage(getMessage("usage", Placeholder.unparsed("label", label)));
-    return true;
-  }
-
-  @Override
-  public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-    String cmd = command.getName().toLowerCase();
-    if (cmd.equals("antitrim") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("reload", "hats", "killeffects", "killsounds", "groups");
-    }
-    if (cmd.equals("hat") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
-      if (args.length == 2) {
-        String sub = args[0].toLowerCase();
-        String prefix = args[1].toLowerCase();
-        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-        if (sub.equals("add") || sub.equals("default")) {
-          List<String> opts = new ArrayList<>();
-          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
-          opts.addAll(getAllNexoItemIds());
-          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
-        }
-        if (sub.equals("edit") || sub.equals("remove")) return getDbHatItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-      }
-    }
-    if (cmd.equals("killeffect") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
-      if (args.length == 2) {
-        String sub = args[0].toLowerCase();
-        String prefix = args[1].toLowerCase();
-        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-        if (sub.equals("add") || sub.equals("default")) {
-          List<String> opts = new ArrayList<>();
-          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
-          opts.addAll(getAllModelEngineBlueprintIds());
-          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
-        }
-        if (sub.equals("edit") || sub.equals("remove")) return getDbKillEffectItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-      }
-    }
-    if (cmd.equals("killsound") && hasAdminPerm(sender)) {
-      if (args.length == 1) return List.of("admin", "groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
-      if (args.length == 2) {
-        String sub = args[0].toLowerCase();
-        String prefix = args[1].toLowerCase();
-        if (sub.equals("admin")) return List.of("groups", "add", "edit", "remove", "default").stream().filter(s -> s.startsWith(prefix)).toList();
-        if (sub.equals("add") || sub.equals("default")) {
-          List<String> opts = new ArrayList<>();
-          if (sub.equals("default")) opts.addAll(List.of("off", "none"));
-          opts.addAll(getAllNexoSoundIds());
-          opts.addAll(getDbKillSoundItems());
-          return opts.stream().distinct().filter(id -> id.toLowerCase().startsWith(prefix)).limit(50).toList();
-        }
-        if (sub.equals("edit") || sub.equals("remove")) return getDbKillSoundItems().stream().filter(id -> id.toLowerCase().startsWith(prefix)).toList();
-      }
-    }
-    return Collections.emptyList();
   }
 }
