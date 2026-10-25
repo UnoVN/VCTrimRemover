@@ -59,12 +59,8 @@ public class TrimMenuHolder implements InventoryHolder {
     addMaterial("gold", "Gold", "#f9e2af", Material.GOLD_INGOT);
     addMaterial("emerald", "Emerald", "#a6e3a1", Material.EMERALD);
     addMaterial("diamond", "Diamond", "#89dceb", Material.DIAMOND);
-    addMaterial("lapis", "Lapis", "#89b4fa", Material.LAPIS_LAZZULI_PLACEHOLDER());
+    addMaterial("lapis", "Lapis", "#89b4fa", Material.LAPIS_LAZULI);
     addMaterial("amethyst", "Amethyst", "#cba6f7", Material.AMETHYST_SHARD);
-  }
-
-  private static Material LAPIS_LAZZULI_PLACEHOLDER() {
-    return Material.LAPIS_LAZULI;
   }
 
   private static void addPattern(String key, String name, Material icon) { PATTERNS.put(key, new PatternOption(key, name, icon)); }
