@@ -102,18 +102,18 @@ public class HatStudioGui implements Listener {
 
   public static void openPlayerMenu(AntiArmorTrim plugin, Player player, int page) {
     ensureRegistered(plugin);
-    boolean hideLocked = plugin.getConfig().getBoolean("hats.hide-locked-hats", true);
+
     List<String> validHats = new ArrayList<>();
     for (String hatId : plugin.getDbHatItems()) {
-      if (plugin.getNexoItem(hatId) == null) continue;
-      if (hideLocked && !plugin.getHatManager().canUseSpecificHat(player, hatId)) continue;
-      validHats.add(hatId);
+      if (plugin.getNexoItem(hatId) != null) {
+        validHats.add(hatId);
+      }
     }
 
     int totalPages = Math.max(1, (int) Math.ceil(validHats.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.hat-title", "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>Custom Hat Studio</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.hat-title", "<white><sprite:items:item/netherite_helmet></white> <#cba6f7><bold>ᴄᴜѕᴛᴏᴍ ʜᴀᴛ ѕᴛᴜᴅɪᴏ</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.HAT_STUDIO, null, null, currentPage);
@@ -138,38 +138,66 @@ public class HatStudioGui implements Listener {
       boolean isDefault = plugin.getHatManager().isForceDefaultHat() && defHat != null && hatId.equalsIgnoreCase(defHat);
       boolean unlocked = plugin.getHatManager().canUseSpecificHat(player, hatId);
 
-      ItemStack icon = nexoStack.clone();
-      ItemMeta meta = icon.getItemMeta();
-      if (meta != null) {
-        plugin.getHatManager().hideAllVanillaTooltips(meta);
-        meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.NETHERITE_HELMET) + " ").append(plugin.getHatManager().getHatDisplayName(hatId, nexoStack)));
-        if (selected) meta.setEnchantmentGlintOverride(true);
+      ItemStack icon;
+      ItemMeta meta;
 
-        List<Component> lore = new ArrayList<>(plugin.getHatManager().getHatCustomLore(hatId, nexoStack));
-        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Server Hat"));
-        if (unlocked) {
-          String statusRaw = selected ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected") : plugin.getConfig().getString("gui.unselected-status", "<#6c7086>○ Unselected");
+      if (unlocked) {
+        icon = nexoStack.clone();
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          plugin.getHatManager().hideAllVanillaTooltips(meta);
+          meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.NETHERITE_HELMET) + " ").append(plugin.getHatManager().getHatDisplayName(hatId, nexoStack)));
+          if (selected) meta.setEnchantmentGlintOverride(true);
+
+          List<Component> lore = new ArrayList<>(plugin.getHatManager().getHatCustomLore(hatId, nexoStack));
+          if (isDefault) lore.add(plugin.parse("<white><sprite:items:item/nether_star></white> <#f9e2af>ᴅᴇꜰᴀᴜʟᴛ <#6c7086>▸ <#cdd6f4>Server Default Hat"));
+          lore.add(Component.empty());
+          String statusRaw = selected
+              ? plugin.getConfig().getString("gui.selected-status", "<white><sprite:items:item/lime_dye></white> <#a6e3a1>ѕᴛᴀᴛᴜѕ <#6c7086>▸ <#a6e3a1><bold>Selected</bold> <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
+              : plugin.getConfig().getString("gui.unselected-status", "<white><sprite:items:item/ender_pearl></white> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Select & Equip <#6c7086>(ᴜɴѕᴇʟᴇᴄᴛᴇᴅ)");
           lore.add(plugin.parse(statusRaw));
-        } else {
-          String reqPerm = plugin.getHatManager().getHatRequiredPermissionNode(hatId);
-          for (String line : plugin.getConfig().getStringList("gui.no-permission-lore")) lore.add(plugin.parseWithPerm(line, reqPerm));
-        }
-        meta.lore(lore);
+          meta.lore(lore);
 
-        PersistentDataContainer pdc = meta.getPersistentDataContainer();
-        for (NamespacedKey k : new ArrayList<>(pdc.getKeys())) if (k.getNamespace().toLowerCase().contains("nexo")) pdc.remove(k);
-        pdc.set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
-        icon.setItemMeta(meta);
+          PersistentDataContainer pdc = meta.getPersistentDataContainer();
+          for (NamespacedKey k : new ArrayList<>(pdc.getKeys())) if (k.getNamespace().toLowerCase().contains("nexo")) pdc.remove(k);
+          pdc.set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
+          icon.setItemMeta(meta);
+        }
+      } else {
+        icon = plugin.getHatManager().createCleanIconStack(Material.GRAY_DYE);
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.GRAY_DYE) + " ")
+              .append(plugin.getHatManager().getHatDisplayName(hatId, nexoStack))
+              .append(plugin.parse(" <#6c7086>• <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold>")));
+
+          List<Component> lore = new ArrayList<>(plugin.getHatManager().getHatCustomLore(hatId, nexoStack));
+          if (isDefault) lore.add(plugin.parse("<white><sprite:items:item/nether_star></white> <#f9e2af>ᴅᴇꜰᴀᴜʟᴛ <#6c7086>▸ <#cdd6f4>Server Default Hat"));
+
+          String reqPerm = plugin.getHatManager().getHatRequiredPermissionNode(hatId);
+          for (String line : TrimMenuHolder.getLockedLoreTemplate(plugin)) {
+            lore.add(plugin.parseWithPerm(line, reqPerm));
+          }
+          meta.lore(lore);
+
+          PersistentDataContainer pdc = meta.getPersistentDataContainer();
+          pdc.set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
+          icon.setItemMeta(meta);
+        }
       }
       plugin.getHatManager().applyHiddenComponentTooltips(icon);
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
-    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Reset & Unequip Hat</bold>", List.of(plugin.parse("<#a6adc8>Disable custom hat and restore"), plugin.parse("<#a6adc8>your default helmet appearance."))));
-    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
-    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin Hat Manager</bold>", List.of(plugin.parse("<#a6adc8>Manage Nexo hats, permission"), plugin.parse("<#a6adc8>groups, or default hat."))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Hub"));
+    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ᴘʀᴇᴠɪᴏᴜѕ</bold> <#6c7086>▸ <#a6adc8>Page " + currentPage, null));
+    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>ʀᴇѕᴇᴛ</bold> <#6c7086>▸ <#cdd6f4>Unequip Hat", List.of(
+        plugin.parse("<#a6adc8>ᴅɪѕᴀʙʟᴇ custom hat & restore"),
+        plugin.parse("<#a6adc8>ʏᴏᴜʀ default <#cdd6f4>Helmet Appearance<#a6adc8>."))));
+    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ɴᴇхᴛ</bold> <#6c7086>▸ <#a6adc8>Page " + (currentPage + 2), null));
+    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.COMMAND_BLOCK, "<#f38ba8><bold>ᴀᴅᴍɪɴ</bold> <#6c7086>▸ <#cdd6f4>Hat Manager", List.of(
+        plugin.parse("<#a6adc8>ᴍᴀɴᴀɢᴇ Nexo hats, perm"),
+        plugin.parse("<#a6adc8>ɢʀᴏᴜᴘѕ, ᴏʀ default hat."))));
 
     player.openInventory(inv);
   }
@@ -180,7 +208,7 @@ public class HatStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(hatIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.hat-admin-title", "<white><sprite:items:item/command_block></white> <#f38ba8><bold>Admin Hat Manager</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.hat-admin-title", "<white><sprite:items:item/command_block></white> <#f38ba8><bold>ᴀᴅᴍɪɴ ʜᴀᴛ ᴍᴀɴᴀɢᴇʀ</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.HAT_ADMIN, null, null, currentPage);
@@ -210,13 +238,13 @@ public class HatStudioGui implements Listener {
           meta.displayName(plugin.getHatManager().getHatDisplayName(hatId, nexoStack).append(plugin.parse(" <#6c7086>(" + hatId + ")")));
           if (isDefault && plugin.getHatManager().isForceDefaultHat()) meta.setEnchantmentGlintOverride(true);
           List<Component> lore = new ArrayList<>(plugin.getHatManager().getHatCustomLore(hatId, nexoStack));
-          if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>Groups: <#f9e2af>" + String.join(", ", groups)));
-          else lore.add(plugin.parse("<#a6adc8>Perm: <#6c7086>Default (" + AntiArmorTrim.HAT_PERM + ")"));
-          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Hat (" + (plugin.getHatManager().isForceDefaultHat() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
+          if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>ɢʀᴏᴜᴘѕ <#6c7086>▸ <#f9e2af>" + String.join(", ", groups)));
+          else lore.add(plugin.parse("<#a6adc8>ᴘᴇʀᴍ <#6c7086>▸ <#6c7086>Default (" + AntiArmorTrim.HAT_PERM + ")"));
+          if (isDefault) lore.add(plugin.parse("<white><sprite:items:item/nether_star></white> <#f9e2af>★ Default Hat (" + (plugin.getHatManager().isForceDefaultHat() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
           lore.add(Component.empty());
-          lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Edit Name & Lore"));
-          lore.add(plugin.parse("<#f9e2af>Shift-Left-Click: <#cdd6f4>Set as Forced Default Hat"));
-          lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Hat"));
+          lore.add(plugin.parse("<white><sprite:items:item/name_tag></white> <#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Edit Name & Lore"));
+          lore.add(plugin.parse("<white><sprite:items:item/nether_star></white> <#f9e2af>ѕʜɪꜰᴛ-ʟᴇꜰᴛ <#6c7086>▸ <#cdd6f4>Set as Forced Default"));
+          lore.add(plugin.parse("<white><sprite:items:item/barrier></white> <#f38ba8>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Delete Hat"));
           meta.lore(lore);
 
           PersistentDataContainer pdc = meta.getPersistentDataContainer();
@@ -226,7 +254,7 @@ public class HatStudioGui implements Listener {
         }
         plugin.getHatManager().applyHiddenComponentTooltips(icon);
       } else {
-        icon = TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Broken ID: " + hatId + "</bold>", List.of(plugin.parse("<#a6adc8>Not found in Nexo!"), Component.empty(), plugin.parse("<#f38ba8>Click to delete this broken entry")));
+        icon = TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>ʙʀᴏᴋᴇɴ ɪᴅ: " + hatId + "</bold>", List.of(plugin.parse("<#a6adc8>Not found in Nexo!"), Component.empty(), plugin.parse("<#f38ba8>Click to delete this broken entry")));
         ItemMeta meta = icon.getItemMeta();
         if (meta != null) {
           meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
@@ -237,17 +265,24 @@ public class HatStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
-    inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Add New Nexo Hat</bold>", List.of(plugin.parse("<#a6adc8>Click to type a Nexo Item ID"), plugin.parse("<#a6adc8>in chat and save to SQLite database."))));
-    inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#cba6f7><bold>Permission Group Manager</bold>", List.of(plugin.parse("<#a6adc8>Create custom permission nodes"), plugin.parse("<#a6adc8>(e.g. <#f9e2af>armortrim.helper<#a6adc8>, <#f9e2af>armortrim.donator<#a6adc8>)"), plugin.parse("<#a6adc8>and click to select hats for each rank!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Player View"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ᴘʀᴇᴠɪᴏᴜѕ</bold>", null));
+    inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>ᴀᴅᴅ ɴᴇхᴏ ʜᴀᴛ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ Nexo Item ID"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴀᴠᴇ ᴛᴏ database."))));
+    inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#cba6f7><bold>ᴘᴇʀᴍɪѕѕɪᴏɴ ɢʀᴏᴜᴘѕ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴄʀᴇᴀᴛᴇ custom permission nodes"),
+        plugin.parse("<#a6adc8>& ѕᴇʟᴇᴄᴛ hats for each rank!"))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ɴᴇхᴛ</bold>", null));
 
     String statusText = plugin.getHatManager().isForceDefaultHat() ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled";
     String defHatText = (defHat != null) ? "<#89dceb>" + defHat : "<#6c7086>None";
-    inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
-        plugin.parse("<#a6adc8>Status: " + statusText), plugin.parse("<#a6adc8>Default Hat: " + defHatText), Component.empty(),
-        plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Toggle Force Default Hat"), plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Clear Default Hat"))));
+    inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>ꜰᴏʀᴄᴇ ᴅᴇꜰᴀᴜʟᴛ ʜᴀᴛ</bold>", List.of(
+        plugin.parse("<#a6adc8>ѕᴛᴀᴛᴜѕ <#6c7086>▸ " + statusText),
+        plugin.parse("<#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ʜᴀᴛ <#6c7086>▸ " + defHatText),
+        Component.empty(),
+        plugin.parse("<#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Toggle Force Default"),
+        plugin.parse("<#f38ba8>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Clear Default Hat"))));
 
     player.openInventory(inv);
   }
@@ -258,7 +293,7 @@ public class HatStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(permNodes.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.hat-groups-title", "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>Hat Perm Groups</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.hat-groups-title", "<white><sprite:items:item/bookshelf></white> <#f9e2af><bold>ʜᴀᴛ ᴘᴇʀᴍ ɢʀᴏᴜᴘѕ</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.HAT_GROUP_LIST, null, null, currentPage);
@@ -276,16 +311,16 @@ public class HatStudioGui implements Listener {
       String permNode = permNodes.get(i);
       Set<String> hatsInGroup = plugin.getDbPermGroups().getOrDefault(permNode, Set.of());
       List<Component> lore = new ArrayList<>(List.of(
-          plugin.parse("<#a6adc8>Permission: <#f9e2af>" + permNode),
-          plugin.parse("<#a6adc8>Selected Hats: <#a6e3a1>" + hatsInGroup.size())));
+          plugin.parse("<#a6adc8>ᴘᴇʀᴍɪѕѕɪᴏɴ <#6c7086>▸ <#f9e2af>" + permNode),
+          plugin.parse("<#a6adc8>ѕᴇʟᴇᴄᴛᴇᴅ ʜᴀᴛѕ <#6c7086>▸ <#a6e3a1>" + hatsInGroup.size())));
       if (!hatsInGroup.isEmpty()) {
         String previewList = String.join(", ", hatsInGroup.stream().limit(5).toList());
         if (hatsInGroup.size() > 5) previewList += "...";
         lore.add(plugin.parse("<#6c7086>(" + previewList + ")"));
       }
       lore.add(Component.empty());
-      lore.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Select Hats for this Permission"));
-      lore.add(plugin.parse("<#f38ba8>Right-Click: <#cdd6f4>Delete Permission Group"));
+      lore.add(plugin.parse("<white><sprite:items:item/ender_eye></white> <#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Select Hats"));
+      lore.add(plugin.parse("<white><sprite:items:item/barrier></white> <#f38ba8>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Delete Group"));
 
       ItemStack icon = TrimMenuHolder.createStyledButton(plugin, Material.TRIPWIRE_HOOK, "<#cba6f7><bold>" + permNode + "</bold>", lore);
       ItemMeta meta = icon.getItemMeta();
@@ -297,10 +332,12 @@ public class HatStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Create New Permission Group</bold>", List.of(plugin.parse("<#a6adc8>Click to type a new permission node"), plugin.parse("<#a6adc8>(e.g. <#f9e2af>armortrim.helper<#a6adc8>, <#f9e2af>armortrim.media<#a6adc8>)"), plugin.parse("<#a6adc8>and select hats for it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Admin"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ᴘʀᴇᴠɪᴏᴜѕ</bold>", null));
+    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>ᴄʀᴇᴀᴛᴇ ɴᴇᴡ ɢʀᴏᴜᴘ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ new permission node"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴇʟᴇᴄᴛ hats for it!"))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ɴᴇхᴛ</bold>", null));
 
     player.openInventory(inv);
   }
@@ -311,7 +348,7 @@ public class HatStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(hatIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.hat-group-select-title", "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.hat-group-select-title", "<white><sprite:items:item/tripwire_hook></white> <#cba6f7><bold>ɢʀᴏᴜᴘ</bold> <#6c7086>▸ <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("perm", permNode), Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.HAT_GROUP_SELECTOR, null, permNode, currentPage);
@@ -341,11 +378,11 @@ public class HatStudioGui implements Listener {
         List<Component> lore = new ArrayList<>(plugin.getHatManager().getHatCustomLore(hatId, nexoStack));
         lore.add(Component.empty());
         if (inGroup) {
-          lore.add(plugin.parse("<#a6e3a1>● Included in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<#fab387>Click to remove from this group"));
+          lore.add(plugin.parse("<white><sprite:items:item/lime_dye></white> <#a6e3a1>ɪɴᴄʟᴜᴅᴇᴅ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#fab387>ᴄʟɪᴄᴋ ᴛᴏ remove from this group"));
         } else {
-          lore.add(plugin.parse("<#6c7086>○ Not in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<#89dceb>Click to add to this group"));
+          lore.add(plugin.parse("<white><sprite:items:item/gray_dye></white> <#6c7086>ɴᴏᴛ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#89dceb>ᴄʟɪᴄᴋ ᴛᴏ add to this group"));
         }
         meta.lore(lore);
 
@@ -358,18 +395,20 @@ public class HatStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back to Groups</bold>"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + currentPage + "<#a6adc8>/" + totalPages))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Groups"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ᴘʀᴇᴠɪᴏᴜѕ</bold>", null));
     Set<String> selectedSet = plugin.getDbPermGroups().getOrDefault(permNode.toLowerCase(), Set.of());
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#f9e2af><bold>Editing: " + permNode + "</bold>", List.of(plugin.parse("<#a6adc8>Total Hats Selected: <#a6e3a1>" + selectedSet.size()), plugin.parse("<#a6adc8>Click any hat above to toggle it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", List.of(plugin.parse("<#a6adc8>Go to page <#f9e2af>" + (currentPage + 2) + "<#a6adc8>/" + totalPages))));
+    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#f9e2af><bold>ᴇᴅɪᴛɪɴɢ: " + permNode + "</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴛᴏᴛᴀʟ ʜᴀᴛѕ <#6c7086>▸ <#a6e3a1>" + selectedSet.size()),
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴀɴʏ ʜᴀᴛ above to toggle it!"))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>ɴᴇхᴛ</bold>", null));
 
     player.openInventory(inv);
   }
 
   public static void openEditorMenu(AntiArmorTrim plugin, Player player, String hatId) {
     ensureRegistered(plugin);
-    String rawTitle = plugin.getConfig().getString("gui.hat-editor-title", "<white><sprite:items:item/anvil></white> <#cba6f7><bold>Edit Hat:</bold> <#89dceb><id>");
+    String rawTitle = plugin.getConfig().getString("gui.hat-editor-title", "<white><sprite:items:item/anvil></white> <#cba6f7><bold>ᴇᴅɪᴛ ʜᴀᴛ</bold> <#6c7086>▸ <#89dceb><id>");
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.HAT_EDITOR, null, hatId, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, plugin.parse(rawTitle, Placeholder.unparsed("id", hatId)));
     holder.setInventory(inv);
@@ -378,34 +417,39 @@ public class HatStudioGui implements Listener {
     for (int i = 0; i < 27; i++) inv.setItem(i, border);
 
     ItemStack nexoStack = plugin.getNexoItem(hatId);
-    inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#89dceb><bold>Edit Display Name</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: ").append(plugin.getHatManager().getHatDisplayName(hatId, nexoStack)),
-        Component.empty(), plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set new display name"), plugin.parse("<#fab387>Right-Click: <#cdd6f4>Reset to Nexo default"))));
+    inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#89dceb><bold>ᴇᴅɪᴛ ᴅɪѕᴘʟᴀʏ ɴᴀᴍᴇ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ ").append(plugin.getHatManager().getHatDisplayName(hatId, nexoStack)),
+        Component.empty(),
+        plugin.parse("<#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Set new display name"),
+        plugin.parse("<#fab387>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Reset to default"))));
 
     List<Component> loreList = new ArrayList<>();
     List<Component> currentLore = plugin.getHatManager().getHatCustomLore(hatId, nexoStack);
     if (currentLore.isEmpty()) loreList.add(plugin.parse("<#6c7086>No lore configured"));
     else loreList.addAll(currentLore);
     loreList.add(Component.empty());
-    loreList.add(plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set or append lore in chat"));
-    loreList.add(plugin.parse("<#fab387>Right-Click: <#cdd6f4>Clear custom lore"));
-    inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.WRITABLE_BOOK, "<#cba6f7><bold>Edit Hat Lore</bold>", loreList));
+    loreList.add(plugin.parse("<#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Set/append in chat"));
+    loreList.add(plugin.parse("<#fab387>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Clear custom lore"));
+    inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.WRITABLE_BOOK, "<#cba6f7><bold>ᴇᴅɪᴛ ʜᴀᴛ ʟᴏʀᴇ</bold>", loreList));
 
     List<String> groups = plugin.getHatManager().getGroupsContainingHat(hatId);
-    inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#a6e3a1><bold>Manage Permission Groups</bold>", List.of(
-        plugin.parse("<#a6adc8>Assigned Groups: <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
-        Component.empty(), plugin.parse("<#89dceb>Click: <#cdd6f4>Open Permission Group Manager"))));
+    inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#a6e3a1><bold>ᴘᴇʀᴍɪѕѕɪᴏɴ ɢʀᴏᴜᴘѕ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴀѕѕɪɢɴᴇᴅ <#6c7086>▸ <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
+        Component.empty(),
+        plugin.parse("<#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Open Group Manager"))));
 
     ItemStack previewHat = plugin.getHatManager().createCosmeticHatFromHelmet(new ItemStack(Material.NETHERITE_HELMET), hatId);
     if (previewHat != null) inv.setItem(14, previewHat);
 
     boolean isDef = plugin.getHatManager().isForceDefaultHat() && hatId.equalsIgnoreCase(plugin.getHatManager().getDefaultHatId());
-    inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default Hat</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: " + (isDef ? "<#a6e3a1>Active Default Hat" : "<#6c7086>Not Default")),
-        Component.empty(), plugin.parse("<#89dceb>Left-Click: <#cdd6f4>Set as Forced Default Hat"), plugin.parse("<#fab387>Right-Click: <#cdd6f4>Disable Forced Default Hat"))));
+    inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>ꜰᴏʀᴄᴇ ᴅᴇꜰᴀᴜʟᴛ ʜᴀᴛ</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ " + (isDef ? "<#a6e3a1>Active Default" : "<#6c7086>Not Default")),
+        Component.empty(),
+        plugin.parse("<#89dceb>ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Set as Forced Default"),
+        plugin.parse("<#fab387>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Disable Forced Default"))));
 
-    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Delete Hat</bold>", List.of(plugin.parse("<#a6adc8>Remove <#f9e2af>" + hatId + " <#a6adc8>from the database."))));
-    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold>"));
+    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>ᴅᴇʟᴇᴛᴇ ʜᴀᴛ</bold>", List.of(plugin.parse("<#a6adc8>ʀᴇᴍᴏᴠᴇ <#f9e2af>" + hatId + " <#a6adc8>from database."))));
+    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>ʙᴀᴄᴋ</bold> <#6c7086>▸ <#cdd6f4>Admin"));
     player.openInventory(inv);
   }
 
