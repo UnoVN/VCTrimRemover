@@ -7,8 +7,10 @@ import com.server.antitrim.manager.RenameManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.Tag;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.text.minimessage.tag.standard.StandardTags;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.luckperms.api.LuckPerms;
 import net.luckperms.api.LuckPermsProvider;
@@ -16,7 +18,6 @@ import net.luckperms.api.model.group.Group;
 import net.luckperms.api.node.Node;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -61,7 +62,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private KillSoundManager killSoundManager;
   private RenameManager renameManager;
 
-  private final MiniMessage miniMessage = MiniMessage.miniMessage();
+  private final MiniMessage miniMessage = initMiniMessage();
   private final LegacyComponentSerializer legacySerializer = LegacyComponentSerializer.builder()
       .character('&')
       .hexColors()
@@ -104,6 +105,19 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
   private final Map<String, Set<String>> dbKillSoundGroups = new LinkedHashMap<>();
   private boolean dbForceDefaultKillSound = false;
   private String dbDefaultKillSound = "";
+
+  private static MiniMessage initMiniMessage() {
+    TagResolver glyphResolver = TagResolver.resolver("glyph", (args, ctx) -> {
+      String id = args.popOr("glyph id").value();
+      return Tag.selfClosingInserting(Component.text("<glyph:" + id + ">"));
+    });
+    return MiniMessage.builder()
+        .tags(TagResolver.builder()
+            .resolver(StandardTags.all())
+            .resolver(glyphResolver)
+            .build())
+        .build();
+  }
 
   @Override
   public void onEnable() {
@@ -785,27 +799,14 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
     return Collections.emptyList();
   }
 
-  public String getItemSpriteTag(Material material) {
-    return "<white><sprite:items:item/" + material.getKey().getKey() + "></white>";
-  }
-
   public Component parseLiteral(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
     return miniMessage.deserialize(input).decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
   }
 
-  /**
-   * Chuyển đổi tên vật phẩm hỗ trợ 100%:
-   * 1. Mã màu Minecraft truyền thống: &0 - &f, §0 - §f
-   * 2. Mã hiệu ứng: &l (in đậm), &m, &n, &o, &k, &r (reset)
-   * 3. Mã màu Hex: &#RRGGBB hoặc &x&r&r&g&g&b&b
-   * 4. Mã MiniMessage: <red>, <gradient:#ff0000:#00ff00>...</gradient>
-   * Bỏ italic mặc định của Minecraft Custom Name.
-   */
   public Component parseItemName(String input) {
     if (input == null || input.isEmpty()) return Component.empty();
 
-    // Nếu người dùng nhập thẻ tag MiniMessage (<...>)
     if (input.contains("<") && input.contains(">")) {
       String converted = legacyToMiniMessage(input);
       try {
@@ -813,7 +814,6 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       } catch (Throwable ignored) {}
     }
 
-    // Xử lý trực tiếp mã màu Minecraft qua LegacyComponentSerializer (không bị mất màu Rarity của đồ Enchant)
     String normalized = input.replace('§', '&');
     return legacySerializer.deserialize(normalized).decoration(TextDecoration.ITALIC, false);
   }
