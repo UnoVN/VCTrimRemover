@@ -38,7 +38,7 @@ public class TrimStudioGui implements Listener {
 
   public static void openMain(AntiArmorTrim plugin, Player player) {
     ensureRegistered(plugin);
-    Component title = plugin.parse(plugin.getConfig().getString("gui.main-title", "<#cba6f7><bold>Armor Trim Studio</bold>"));
+    Component title = plugin.parse(plugin.getConfig().getString("gui.main-title", "<white><sprite:items:item/silence_armor_trim_smithing_template></white> <#cba6f7><bold>Armor Trim Studio</bold>"));
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.TRIM_MAIN, null, null, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, title);
     holder.setInventory(inv);
@@ -57,9 +57,10 @@ public class TrimStudioGui implements Listener {
   public static void openSlotMenu(AntiArmorTrim plugin, Player player, EquipmentSlot slot) {
     ensureRegistered(plugin);
     String slotName = getSlotEnglishName(slot);
-    String rawTitle = plugin.getConfig().getString("gui.slot-title", "<#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>");
+    Material previewMat = getPreviewMaterial(slot);
+    String rawTitle = plugin.getConfig().getString("gui.slot-title", "<slot_icon> <#cba6f7><bold>Trim Editor:</bold> <#74c7ec><slot>");
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.TRIM_SLOT, slot, null, 0);
-    Inventory inv = Bukkit.createInventory(holder, 54, plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName)));
+    Inventory inv = Bukkit.createInventory(holder, 54, plugin.parse(rawTitle, Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", plugin.getItemSpriteTag(previewMat))));
     holder.setInventory(inv);
 
     ItemStack filler = TrimMenuHolder.createFiller(plugin, Material.BLACK_STAINED_GLASS_PANE);
@@ -73,7 +74,7 @@ public class TrimStudioGui implements Listener {
       inv.setItem(pIndex++, createPatternIcon(plugin, player, pOpt, pOpt.key().equalsIgnoreCase(currentPattern)));
     }
 
-    inv.setItem(22, createMainSlotIcon(plugin, player, slot, getPreviewMaterial(slot)));
+    inv.setItem(22, createMainSlotIcon(plugin, player, slot, previewMat));
 
     int[] matSlots = {29, 30, 31, 32, 33, 38, 39, 40, 41, 42};
     int mIndex = 0;
@@ -84,13 +85,13 @@ public class TrimStudioGui implements Listener {
 
     inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Slots"));
 
-    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>Disable auto-trim & clear active trim.")));
+    List<Component> clearLore = new ArrayList<>(List.of(plugin.parse("<#a6adc8>ᴅɪѕᴀʙʟᴇ auto-trim & clear <#cdd6f4>Active Trim<#a6adc8>.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, clearLore, AntiArmorTrim.BYPASS_PERM);
     inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Reset & Clear Trim</bold>", clearLore));
 
     List<Component> allLore = new ArrayList<>(List.of(
-        plugin.parse("<#a6adc8>Sync this slot's pattern & material"),
-        plugin.parse("<#a6adc8>to all 4 armor pieces.")));
+        plugin.parse("<#a6adc8>ѕʏɴᴄ ᴛʜɪѕ ѕʟᴏᴛ'ѕ <#cdd6f4>Pattern & Material"),
+        plugin.parse("<#a6adc8>ᴛᴏ <#cba6f7>All 4 Armor Pieces<#a6adc8>.")));
     TrimMenuHolder.appendLockedLoreIfNeeded(plugin, player, allLore, AntiArmorTrim.BYPASS_PERM);
     inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#cba6f7><bold>Sync to All 4 Pieces</bold>", allLore));
 
@@ -103,7 +104,7 @@ public class TrimStudioGui implements Listener {
     if (meta == null) return item;
 
     plugin.getHatManager().hideAllVanillaTooltips(meta);
-    meta.displayName(plugin.parse("<#74c7ec><bold>" + getSlotEnglishName(slot) + " Trim</bold>"));
+    meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " <#74c7ec><bold>" + getSlotEnglishName(slot) + " Trim</bold>"));
 
     String patternKey = plugin.getHatManager().getSavedPatternKey(player, slot);
     String materialKey = plugin.getHatManager().getSavedMaterialKey(player, slot);
@@ -111,13 +112,13 @@ public class TrimStudioGui implements Listener {
     TrimMenuHolder.MaterialOption mOpt = materialKey != null ? TrimMenuHolder.MATERIALS.get(materialKey) : null;
 
     List<Component> lore = new ArrayList<>();
-    String patternDisplay = pOpt != null ? "<#89dceb>" + pOpt.name() : "<#6c7086>None";
-    String materialDisplay = mOpt != null ? "<" + mOpt.hexColor() + ">" + mOpt.name() : "<#6c7086>None";
+    String patternDisplay = pOpt != null ? plugin.getItemSpriteTag(pOpt.icon()) + " <#89dceb>" + pOpt.name() : "<#6c7086>None";
+    String materialDisplay = mOpt != null ? plugin.getItemSpriteTag(mOpt.icon()) + " <" + mOpt.hexColor() + ">" + mOpt.name() : "<#6c7086>None";
 
-    lore.add(plugin.parse("<#a6adc8>Pattern: " + patternDisplay));
-    lore.add(plugin.parse("<#a6adc8>Material: " + materialDisplay));
+    lore.add(plugin.parse("<#a6adc8>ᴘᴀᴛᴛᴇʀɴ <#6c7086>▸ " + patternDisplay));
+    lore.add(plugin.parse("<#a6adc8>ᴍᴀᴛᴇʀɪᴀʟ <#6c7086>▸ " + materialDisplay));
     if (slot == EquipmentSlot.HEAD && plugin.getHatManager().getEffectiveHatId(player) != null) {
-      lore.add(plugin.parse("<#fab387>Custom Hat Active (Trim Paused)"));
+      lore.add(plugin.parse("<white><sprite:items:item/bell></white> <#fab387>Custom Hat Active <#6c7086>(Trim Paused)"));
     }
 
     if (meta instanceof ArmorMeta armorMeta && pOpt != null && mOpt != null) {
@@ -140,10 +141,10 @@ public class TrimStudioGui implements Listener {
     if (meta == null) return item;
 
     if (unlocked) {
-      meta.displayName(plugin.parse((selected ? "<#a6e3a1><bold>" : "<#89dceb>") + opt.name() + " Trim"));
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<#89dceb>") + opt.name() + " Trim"));
       if (selected) meta.setEnchantmentGlintOverride(true);
     } else {
-      meta.displayName(plugin.parse("<#89dceb>" + opt.name() + " Trim <#6c7086>• <#f38ba8>[Locked]"));
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.GRAY_DYE) + " <#89dceb>" + opt.name() + " Trim <#6c7086>• <#f38ba8>[Locked]"));
     }
 
     List<Component> lore = new ArrayList<>();
@@ -162,10 +163,10 @@ public class TrimStudioGui implements Listener {
     if (meta == null) return item;
 
     if (unlocked) {
-      meta.displayName(plugin.parse((selected ? "<#a6e3a1><bold>" : "<" + opt.hexColor() + ">") + opt.name() + " Material"));
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(opt.icon()) + " " + (selected ? "<#a6e3a1><bold>" : "<" + opt.hexColor() + ">") + opt.name() + " Material"));
       if (selected) meta.setEnchantmentGlintOverride(true);
     } else {
-      meta.displayName(plugin.parse("<" + opt.hexColor() + ">" + opt.name() + " Material <#6c7086>• <#f38ba8>[Locked]"));
+      meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.GRAY_DYE) + " <" + opt.hexColor() + ">" + opt.name() + " Material <#6c7086>• <#f38ba8>[Locked]"));
     }
 
     List<Component> lore = new ArrayList<>();
@@ -238,6 +239,7 @@ public class TrimStudioGui implements Listener {
     String currentPattern = plugin.getHatManager().getSavedPatternKey(player, armorSlot);
     String currentMaterial = plugin.getHatManager().getSavedMaterialKey(player, armorSlot);
     String slotName = getSlotEnglishName(armorSlot);
+    String slotIcon = plugin.getItemSpriteTag(getPreviewMaterial(armorSlot));
 
     if (slot < 18) {
       List<TrimMenuHolder.PatternOption> pList = new ArrayList<>(TrimMenuHolder.PATTERNS.values());
@@ -251,9 +253,9 @@ public class TrimStudioGui implements Listener {
 
         player.playSound(player.getLocation(), Sound.BLOCK_SMITHING_TABLE_USE, 1f, 1.2f);
         player.sendMessage(plugin.getMessage("trim-selected",
-            Placeholder.unparsed("slot", slotName),
-            Placeholder.unparsed("pattern", chosenPattern.name()),
-            Placeholder.unparsed("material", matOpt.name())));
+            Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", slotIcon),
+            Placeholder.unparsed("pattern", chosenPattern.name()), Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(chosenPattern.icon())),
+            Placeholder.unparsed("material", matOpt.name()), Placeholder.parsed("material_icon", plugin.getItemSpriteTag(matOpt.icon()))));
         if (armorSlot == EquipmentSlot.HEAD && plugin.getHatManager().getEffectiveHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
         openSlotMenu(plugin, player, armorSlot);
       }
@@ -274,9 +276,9 @@ public class TrimStudioGui implements Listener {
 
           player.playSound(player.getLocation(), Sound.BLOCK_SMITHING_TABLE_USE, 1f, 1.4f);
           player.sendMessage(plugin.getMessage("trim-selected",
-              Placeholder.unparsed("slot", slotName),
-              Placeholder.unparsed("pattern", patOpt.name()),
-              Placeholder.unparsed("material", chosenMaterial.name())));
+              Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", slotIcon),
+              Placeholder.unparsed("pattern", patOpt.name()), Placeholder.parsed("pattern_icon", plugin.getItemSpriteTag(patOpt.icon())),
+              Placeholder.unparsed("material", chosenMaterial.name()), Placeholder.parsed("material_icon", plugin.getItemSpriteTag(chosenMaterial.icon()))));
           if (armorSlot == EquipmentSlot.HEAD && plugin.getHatManager().getEffectiveHatId(player) != null) player.sendMessage(plugin.getMessage("trim-hat-active"));
           openSlotMenu(plugin, player, armorSlot);
         }
@@ -293,7 +295,7 @@ public class TrimStudioGui implements Listener {
         player.getInventory().setItem(armorSlot, worn);
       }
       player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_BREAK, 1f, 1.2f);
-      player.sendMessage(plugin.getMessage("trim-cleared", Placeholder.unparsed("slot", slotName)));
+      player.sendMessage(plugin.getMessage("trim-cleared", Placeholder.unparsed("slot", slotName), Placeholder.parsed("slot_icon", slotIcon)));
       openSlotMenu(plugin, player, armorSlot);
       return;
     }
@@ -324,7 +326,9 @@ public class TrimStudioGui implements Listener {
       player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1.2f);
       player.sendMessage(plugin.getMessage("trim-applied-all",
           Placeholder.unparsed("pattern", patOpt != null ? patOpt.name() : currentPattern),
-          Placeholder.unparsed("material", matOpt != null ? matOpt.name() : currentMaterial)));
+          Placeholder.parsed("pattern_icon", patOpt != null ? plugin.getItemSpriteTag(patOpt.icon()) : ""),
+          Placeholder.unparsed("material", matOpt != null ? matOpt.name() : currentMaterial),
+          Placeholder.parsed("material_icon", matOpt != null ? plugin.getItemSpriteTag(matOpt.icon()) : "")));
       openMain(plugin, player);
     }
   }
