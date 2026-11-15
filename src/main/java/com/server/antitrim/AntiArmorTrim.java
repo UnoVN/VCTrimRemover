@@ -141,11 +141,12 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   public void syncConfigWithDefaults() {
     int currentVer = getConfig().getInt("config-version", 0);
-    if (currentVer < 3) {
+    if (currentVer < 6) {
       try (InputStream in = getResource("config.yml")) {
         if (in != null) {
           YamlConfiguration def = YamlConfiguration.loadConfiguration(new InputStreamReader(in, StandardCharsets.UTF_8));
-          getConfig().set("config-version", 3);
+          getConfig().set("config-version", 6);
+          getConfig().set("prefixes", def.getConfigurationSection("prefixes"));
           getConfig().set("gui", def.getConfigurationSection("gui"));
           getConfig().set("messages", def.getConfigurationSection("messages"));
           getConfig().set("hats.hide-locked-hats", false);
@@ -201,16 +202,16 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
 
   private void seedDefaultEliteCreaturesKillEffects() {
     String[][] defaults = {
-        {"kfx_acidic_corrosion", "<#a6e3a1><bold>Acidic Corrosion</bold>", "<#a6adc8>Dissolves your victim in toxic acid."},
-        {"kfx_clockwork_disassembly", "<#f9e2af><bold>Clockwork Disassembly</bold>", "<#a6adc8>Shatters your victim into golden gears."},
-        {"kfx_frost_infection", "<#89dceb><bold>Frost Infection</bold>", "<#a6adc8>Freezes and shatters your victim in blue ice."},
-        {"kfx_abstracted", "<#cba6f7><bold>Abstracted</bold>", "<#a6adc8>Warps your victim into a glitching dimension."},
-        {"kfx_graffiti_spray", "<#f38ba8><bold>Graffiti Spray</bold>", "<#a6adc8>Blasts your victim into street art smoke."},
-        {"kfx_origami_fold", "<#f5c2e7><bold>Origami Fold</bold>", "<#a6adc8>Folds your victim into paper origami."},
-        {"kfx_plasma_orb", "<#74c7ec><bold>Plasma Orb</bold>", "<#a6adc8>Engulfs your victim in an unstable plasma sphere."},
-        {"kfx_magnetic_resonance", "<#eba0ac><bold>Magnetic Resonance</bold>", "<#a6adc8>Tears your victim apart with magnetic waves."},
-        {"kfx_ink_blots", "<#89b4fa><bold>Ink Blots</bold>", "<#a6adc8>Splashes your victim into dark ink puddles."},
-        {"kfx_pure_form", "<#fab387><bold>Pure Form</bold>", "<#a6adc8>Ascends your victim into pure celestial energy."}
+        {"kfx_acidic_corrosion", "<#a6e3a1><bold>Acidic Corrosion</bold>", "<#a6adc8>ᴅɪѕѕᴏʟᴠᴇѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴ <#a6e3a1>ᴛᴏхɪᴄ ᴀᴄɪᴅ<#a6adc8>."},
+        {"kfx_clockwork_disassembly", "<#f9e2af><bold>Clockwork Disassembly</bold>", "<#a6adc8>ѕʜᴀᴛᴛᴇʀѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ <#f9e2af>ɢᴏʟᴅᴇɴ ɢᴇᴀʀѕ<#a6adc8>."},
+        {"kfx_frost_infection", "<#89dceb><bold>Frost Infection</bold>", "<#a6adc8>ꜰʀᴇᴇᴢᴇѕ & ѕʜᴀᴛᴛᴇʀѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴ <#89dceb>ʙʟᴜᴇ ɪᴄᴇ<#a6adc8>."},
+        {"kfx_abstracted", "<#cba6f7><bold>Abstracted</bold>", "<#a6adc8>ᴡᴀʀᴘѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ ᴀ <#cba6f7>ɢʟɪᴛᴄʜɪɴɢ ᴅɪᴍᴇɴѕɪᴏɴ<#a6adc8>."},
+        {"kfx_graffiti_spray", "<#f38ba8><bold>Graffiti Spray</bold>", "<#a6adc8>ʙʟᴀѕᴛѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ <#f38ba8>ѕᴛʀᴇᴇᴛ ᴀʀᴛ ѕᴍᴏᴋᴇ<#a6adc8>."},
+        {"kfx_origami_fold", "<#f5c2e7><bold>Origami Fold</bold>", "<#a6adc8>ꜰᴏʟᴅѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ <#f5c2e7>ᴘᴀᴘᴇʀ ᴏʀɪɢᴀᴍɪ<#a6adc8>."},
+        {"kfx_plasma_orb", "<#74c7ec><bold>Plasma Orb</bold>", "<#a6adc8>ᴇɴɢᴜʟꜰѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴ ᴀɴ <#74c7ec>ᴜɴѕᴛᴀʙʟᴇ ᴘʟᴀѕᴍᴀ ѕᴘʜᴇʀᴇ<#a6adc8>."},
+        {"kfx_magnetic_resonance", "<#eba0ac><bold>Magnetic Resonance</bold>", "<#a6adc8>ᴛᴇᴀʀѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ᴀᴘᴀʀᴛ ᴡɪᴛʜ <#eba0ac>ᴍᴀɢɴᴇᴛɪᴄ ᴡᴀᴠᴇѕ<#a6adc8>."},
+        {"kfx_ink_blots", "<#89b4fa><bold>Ink Blots</bold>", "<#a6adc8>ѕᴘʟᴀѕʜᴇѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ <#89b4fa>ᴅᴀʀᴋ ɪɴᴋ ᴘᴜᴅᴅʟᴇѕ<#a6adc8>."},
+        {"kfx_pure_form", "<#fab387><bold>Pure Form</bold>", "<#a6adc8>ᴀѕᴄᴇɴᴅѕ ʏᴏᴜʀ ᴠɪᴄᴛɪᴍ ɪɴᴛᴏ <#fab387>ᴘᴜʀᴇ ᴄᴇʟᴇѕᴛɪᴀʟ ᴇɴᴇʀɢʏ<#a6adc8>."}
     };
     for (String[] entry : defaults) {
       addKillEffectToDb(entry[0]);
@@ -836,9 +837,25 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       String id = args.popOr("glyph id").value();
       Component nexoComp = deserializeNexoGlyph("<glyph:" + id + ">");
       if (nexoComp != null) {
-        return Tag.selfClosingInserting(nexoComp.colorIfAbsent(NamedTextColor.WHITE));
+        Component cleanGlyph = nexoComp
+            .color(NamedTextColor.WHITE)
+            .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE)
+            .decoration(TextDecoration.BOLD, TextDecoration.State.FALSE)
+            .decoration(TextDecoration.UNDERLINED, TextDecoration.State.FALSE)
+            .decoration(TextDecoration.STRIKETHROUGH, TextDecoration.State.FALSE)
+            .decoration(TextDecoration.OBFUSCATED, TextDecoration.State.FALSE);
+        return Tag.selfClosingInserting(cleanGlyph);
       }
-      return Tag.selfClosingInserting(Component.text("<glyph:" + id + ">", NamedTextColor.WHITE));
+      String fallback = switch (id.toLowerCase()) {
+        case "next" -> "»";
+        case "previous" -> "«";
+        case "cancel" -> "✖";
+        case "locked_red" -> "✖";
+        default -> "⚠";
+      };
+      return Tag.selfClosingInserting(Component.text(fallback, NamedTextColor.WHITE)
+          .decoration(TextDecoration.ITALIC, TextDecoration.State.FALSE)
+          .decoration(TextDecoration.BOLD, TextDecoration.State.FALSE));
     });
   }
 
@@ -850,7 +867,7 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
       ClassLoader loader = nexo.getClass().getClassLoader();
       Class<?> advClass = Class.forName("com.nexomc.nexo.utils.AdventureUtils", true, loader);
       Object advInstance = advClass.getField("INSTANCE").get(null);
-      for (String methodName : new String[]{"getNEXO_SERIALIZER", "getMINI_MESSAGE"}) {
+      for (String methodName : new String[]{"getNEXO_SERIALIZER", "getMINI_MESSAGE", "getNexoSerializer", "getMiniMessage"}) {
         try {
           Method m = advClass.getMethod(methodName);
           Object mmObj = m.invoke(advInstance);
@@ -860,6 +877,11 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
           }
         } catch (Throwable ignored) {}
       }
+      try {
+        Method parseM = advClass.getMethod("parseMiniMessage", String.class);
+        Object res = parseM.invoke(advInstance, rawTag);
+        if (res instanceof Component c) return c;
+      } catch (Throwable ignored) {}
     } catch (Throwable ignored) {}
     return null;
   }
@@ -903,14 +925,73 @@ public class AntiArmorTrim extends JavaPlugin implements CommandExecutor, TabCom
         .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE);
   }
 
+  public String getCategoryForMessageKey(String key) {
+    if (key == null) return "system";
+    String lower = key.toLowerCase();
+    if (lower.startsWith("trim") || lower.equals("remove-trim") || lower.equals("deny-smith")) return "trim";
+    if (lower.startsWith("hat-admin-")) return "admin";
+    if (lower.startsWith("hat")) return "hat";
+    if (lower.startsWith("killeffect-admin-")) return "admin";
+    if (lower.startsWith("killeffect")) return "killeffect";
+    if (lower.startsWith("killsound-admin-")) return "admin";
+    if (lower.startsWith("killsound")) return "killsound";
+    if (lower.startsWith("rename-unauthorized")) return "error";
+    if (lower.startsWith("rename")) return "rename";
+    if (lower.startsWith("no-permission") || lower.startsWith("only-players")) return "error";
+    return "system";
+  }
+
+  public String getCategoryPrefixRaw(String category) {
+    String mainPrefix = getConfig().getString("prefixes.main", "");
+    String catPrefix = getConfig().getString("prefixes." + category, null);
+    if (catPrefix == null) {
+      catPrefix = switch (category) {
+        case "trim" -> "<white><glyph:warning_purple></white> <#cba6f7><bold>ᴛʀɪᴍ</bold> <#6c7086>▸ ";
+        case "hat" -> "<white><glyph:warning_blue></white> <#f9e2af><bold>ʜᴀᴛ</bold> <#6c7086>▸ ";
+        case "killeffect" -> "<white><glyph:warning_purple></white> <#eba0ac><bold>ᴋɪʟʟᴇꜰꜰᴇᴄᴛ</bold> <#6c7086>▸ ";
+        case "killsound" -> "<white><glyph:warning_blue></white> <#a6e3a1><bold>ᴋɪʟʟѕᴏᴜɴᴅ</bold> <#6c7086>▸ ";
+        case "rename" -> "<white><glyph:warning_blue></white> <#74c7ec><bold>ʀᴇɴᴀᴍᴇ</bold> <#6c7086>▸ ";
+        case "admin" -> "<white><glyph:warning_purple></white> <#f38ba8><bold>ᴀᴅᴍɪɴ</bold> <#6c7086>▸ ";
+        case "error" -> "<white><glyph:warning_red></white> <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold> <#6c7086>▸ ";
+        default -> "<white><glyph:warning_blue></white> <#cba6f7><bold>ѕʏѕᴛᴇᴍ</bold> <#6c7086>▸ ";
+      };
+    }
+    return mainPrefix + catPrefix;
+  }
+
+  private TagResolver createPrefixTagResolver(String defaultCategory) {
+    return TagResolver.resolver("prefix", (args, ctx) -> {
+      String cat = args.hasNext() ? args.pop().value().toLowerCase() : defaultCategory;
+      String prefixRaw = getCategoryPrefixRaw(cat);
+      return Tag.selfClosingInserting(parse(prefixRaw));
+    });
+  }
+
   public Component getMessage(String key, TagResolver... resolvers) {
     return getMessageWithPerm(key, BYPASS_PERM, resolvers);
   }
 
   public Component getMessageWithPerm(String key, String permissionNode, TagResolver... resolvers) {
+    String category = getCategoryForMessageKey(key);
+    String rawMsg = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
     String prefixRaw = getConfig().getString("messages.prefix", "");
-    String msgRaw = getConfig().getString("messages." + key, "<#f38ba8>Missing message key: " + key);
-    return parseWithPerm(prefixRaw + msgRaw, permissionNode, resolvers);
+    String fullMsg = rawMsg.contains("<prefix") ? (prefixRaw + rawMsg) : (prefixRaw + "<prefix>" + rawMsg);
+
+    TagResolver prefixResolver = createPrefixTagResolver(category);
+    TagResolver combined = TagResolver.builder()
+        .resolver(prefixResolver)
+        .resolver(Placeholder.parsed("prefix_trim", getCategoryPrefixRaw("trim")))
+        .resolver(Placeholder.parsed("prefix_hat", getCategoryPrefixRaw("hat")))
+        .resolver(Placeholder.parsed("prefix_killeffect", getCategoryPrefixRaw("killeffect")))
+        .resolver(Placeholder.parsed("prefix_killsound", getCategoryPrefixRaw("killsound")))
+        .resolver(Placeholder.parsed("prefix_rename", getCategoryPrefixRaw("rename")))
+        .resolver(Placeholder.parsed("prefix_admin", getCategoryPrefixRaw("admin")))
+        .resolver(Placeholder.parsed("prefix_system", getCategoryPrefixRaw("system")))
+        .resolver(Placeholder.parsed("prefix_error", getCategoryPrefixRaw("error")))
+        .resolvers(resolvers)
+        .build();
+
+    return parseWithPerm(fullMsg, permissionNode, combined);
   }
 
   public Component getRawMessage(String key, TagResolver... resolvers) {

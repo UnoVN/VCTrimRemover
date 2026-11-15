@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
@@ -22,6 +23,8 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemDamageEvent;
+import org.bukkit.event.player.PlayerItemMendEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -230,7 +233,15 @@ public class TrimListener implements Listener {
     List<ItemStack> drops = event.getDrops();
     for (int i = 0; i < drops.size(); i++) {
       ItemStack drop = drops.get(i);
-      if (plugin.getHatManager().isCustomHatItem(drop)) drops.set(i, plugin.getHatManager().restoreOriginalHelmet(drop));
+      if (plugin.getHatManager().isCustomHatItem(drop)) {
+        ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(drop);
+        if (restored == null || restored.getType().isAir()) {
+          drops.remove(i);
+          i--;
+        } else {
+          drops.set(i, restored);
+        }
+      }
     }
     Player victim = event.getPlayer();
     plugin.getHatManager().restoreAllCustomHatsInInventory(victim);
@@ -257,6 +268,33 @@ public class TrimListener implements Listener {
     }, 2L);
   }
 
+  @EventHandler(priority = EventPriority.LOWEST)
+  public void onPlayerItemDamage(PlayerItemDamageEvent event) {
+    if (plugin.getHatManager().isCustomHatItem(event.getItem())) {
+      event.setCancelled(true);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onEntityDamageForHat(EntityDamageEvent event) {
+    if (!(event.getEntity() instanceof Player player)) return;
+    if (player.getGameMode() == org.bukkit.GameMode.CREATIVE || player.getGameMode() == org.bukkit.GameMode.SPECTATOR) return;
+    if (event.getDamage() <= 0.0) return;
+    ItemStack helmet = player.getInventory().getHelmet();
+    if (!plugin.getHatManager().isCustomHatItem(helmet)) return;
+    plugin.getHatManager().applyCombatDamageToHat(player, helmet, event);
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onPlayerItemMend(PlayerItemMendEvent event) {
+    ItemStack item = event.getItem();
+    if (plugin.getHatManager().isCustomHatItem(item)) {
+      int currentDmg = plugin.getHatManager().getCustomHatDamage(item);
+      int repairedDmg = Math.max(0, currentDmg - event.getRepairAmount());
+      plugin.getHatManager().setCustomHatDamage(item, repairedDmg);
+    }
+  }
+
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onTeleport(PlayerTeleportEvent event) {
     if (event.getFrom().getWorld() != null && event.getTo() != null && event.getTo().getWorld() != null) {
@@ -279,13 +317,26 @@ public class TrimListener implements Listener {
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onDrop(PlayerDropItemEvent event) {
     ItemStack dropped = event.getItemDrop().getItemStack();
-    if (plugin.getHatManager().isCustomHatItem(dropped)) event.getItemDrop().setItemStack(plugin.getHatManager().restoreOriginalHelmet(dropped));
+    if (plugin.getHatManager().isCustomHatItem(dropped)) {
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(dropped);
+      if (restored == null || restored.getType().isAir()) {
+        event.getItemDrop().remove();
+      } else {
+        event.getItemDrop().setItemStack(restored);
+      }
+    }
   }
 
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
   public void onSwapHand(PlayerSwapHandItemsEvent event) {
-    if (plugin.getHatManager().isCustomHatItem(event.getOffHandItem())) event.setOffHandItem(plugin.getHatManager().restoreOriginalHelmet(event.getOffHandItem()));
-    if (plugin.getHatManager().isCustomHatItem(event.getMainHandItem())) event.setMainHandItem(plugin.getHatManager().restoreOriginalHelmet(event.getMainHandItem()));
+    if (plugin.getHatManager().isCustomHatItem(event.getOffHandItem())) {
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(event.getOffHandItem());
+      event.setOffHandItem(restored != null && !restored.getType().isAir() ? restored : null);
+    }
+    if (plugin.getHatManager().isCustomHatItem(event.getMainHandItem())) {
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(event.getMainHandItem());
+      event.setMainHandItem(restored != null && !restored.getType().isAir() ? restored : null);
+    }
   }
 
   @EventHandler(priority = EventPriority.HIGHEST)
@@ -304,6 +355,7 @@ public class TrimListener implements Listener {
     Player player = event.getPlayer();
     plugin.getCombatTracker().clearVictimRecord(player.getUniqueId());
     plugin.getHatManager().restoreAllCustomHatsInInventory(player);
+    plugin.getKillEffectManager().cancelPlayerPreview(player.getUniqueId());
   }
 
   @EventHandler(priority = EventPriority.LOWEST)
@@ -326,11 +378,13 @@ public class TrimListener implements Listener {
 
     boolean clickedHat = false;
     if (plugin.getHatManager().isCustomHatItem(event.getCurrentItem())) {
-      event.setCurrentItem(plugin.getHatManager().restoreOriginalHelmet(event.getCurrentItem()));
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(event.getCurrentItem());
+      event.setCurrentItem(restored != null && !restored.getType().isAir() ? restored : null);
       clickedHat = true;
     }
     if (plugin.getHatManager().isCustomHatItem(event.getCursor())) {
-      event.getView().setCursor(plugin.getHatManager().restoreOriginalHelmet(event.getCursor()));
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(event.getCursor());
+      event.getView().setCursor(restored != null && !restored.getType().isAir() ? restored : null);
       clickedHat = true;
     }
     if (event.getClick() == ClickType.NUMBER_KEY) {
@@ -338,14 +392,16 @@ public class TrimListener implements Listener {
       if (hotbarBtn >= 0) {
         ItemStack hotbarItem = player.getInventory().getItem(hotbarBtn);
         if (plugin.getHatManager().isCustomHatItem(hotbarItem)) {
-          player.getInventory().setItem(hotbarBtn, plugin.getHatManager().restoreOriginalHelmet(hotbarItem));
+          ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(hotbarItem);
+          player.getInventory().setItem(hotbarBtn, restored != null && !restored.getType().isAir() ? restored : null);
           clickedHat = true;
         }
       }
     } else if (event.getClick() == ClickType.SWAP_OFFHAND) {
       ItemStack offhand = player.getInventory().getItemInOffHand();
       if (plugin.getHatManager().isCustomHatItem(offhand)) {
-        player.getInventory().setItemInOffHand(plugin.getHatManager().restoreOriginalHelmet(offhand));
+        ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(offhand);
+        player.getInventory().setItemInOffHand(restored != null && !restored.getType().isAir() ? restored : null);
         clickedHat = true;
       }
     }
@@ -363,7 +419,8 @@ public class TrimListener implements Listener {
 
     ItemStack cursor = player.getItemOnCursor();
     if (plugin.getHatManager().isCustomHatItem(cursor)) {
-      player.setItemOnCursor(plugin.getHatManager().restoreOriginalHelmet(cursor));
+      ItemStack restored = plugin.getHatManager().restoreOriginalHelmet(cursor);
+      player.setItemOnCursor(restored != null && !restored.getType().isAir() ? restored : null);
     }
 
     if (plugin.getHatManager().isExternalGui(event.getInventory())) {
@@ -439,7 +496,7 @@ public class TrimListener implements Listener {
     ItemStack item = event.getItem();
     if (plugin.getHatManager().isCustomHatItem(item) && event.getHand() != null) {
       item = plugin.getHatManager().restoreOriginalHelmet(item);
-      player.getInventory().setItem(event.getHand(), item);
+      player.getInventory().setItem(event.getHand(), item != null && !item.getType().isAir() ? item : null);
     }
 
     if (item != null && !plugin.getRenameManager().canUseRename(player) && plugin.getRenameManager().isPluginRenamedItem(item)) {
@@ -464,6 +521,11 @@ public class TrimListener implements Listener {
       ItemStack picked = event.getItem().getItemStack();
       if (plugin.getHatManager().isCustomHatItem(picked)) {
         picked = plugin.getHatManager().restoreOriginalHelmet(picked);
+        if (picked == null || picked.getType().isAir()) {
+          event.setCancelled(true);
+          event.getItem().remove();
+          return;
+        }
         event.getItem().setItemStack(picked);
       }
 

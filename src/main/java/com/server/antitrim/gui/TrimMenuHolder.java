@@ -20,7 +20,7 @@ public class TrimMenuHolder implements InventoryHolder {
   public enum MenuType {
     DECOR_HUB, TRIM_MAIN, TRIM_SLOT,
     HAT_STUDIO, HAT_ADMIN, HAT_EDITOR, HAT_GROUP_LIST, HAT_GROUP_SELECTOR,
-    KILLEFFECT_STUDIO, KILLEFFECT_ADMIN, KILLEFFECT_EDITOR, KILLEFFECT_GROUP_LIST, KILLEFFECT_GROUP_SELECTOR,
+    KILLEFFECT_HUB, KILLEFFECT_STUDIO, KILLEFFECT_ADMIN, KILLEFFECT_EDITOR, KILLEFFECT_GROUP_LIST, KILLEFFECT_GROUP_SELECTOR,
     KILLSOUND_STUDIO, KILLSOUND_ADMIN, KILLSOUND_EDITOR, KILLSOUND_GROUP_LIST, KILLSOUND_GROUP_SELECTOR,
     RENAME_STUDIO
   }
@@ -102,7 +102,11 @@ public class TrimMenuHolder implements InventoryHolder {
     ItemStack btn = plugin.getHatManager().createCleanIconStack(mat);
     ItemMeta meta = btn.getItemMeta();
     if (meta != null) {
-      meta.displayName(plugin.parse(plugin.getItemSpriteTag(mat) + " " + titleMini));
+      String displayStr = titleMini;
+      if (!titleMini.contains("<sprite:") && !titleMini.contains("<glyph:")) {
+        displayStr = plugin.getItemSpriteTag(mat) + " " + titleMini;
+      }
+      meta.displayName(plugin.parse(displayStr));
       if (lore != null) meta.lore(lore);
       btn.setItemMeta(meta);
     }
@@ -110,8 +114,63 @@ public class TrimMenuHolder implements InventoryHolder {
     return btn;
   }
 
+  public static ItemStack createNexoOrVanillaButton(AntiArmorTrim plugin, String nexoItemId, Material fallbackMat, String titleMini, List<Component> lore) {
+    ItemStack base = null;
+    if (nexoItemId != null && !nexoItemId.isBlank()) {
+      base = plugin.getNexoItem(nexoItemId);
+      if (base == null && nexoItemId.contains(":")) {
+        base = plugin.getNexoItem(nexoItemId.substring(nexoItemId.indexOf(':') + 1));
+      }
+    }
+    if (base != null) {
+      ItemStack btn = base.clone();
+      btn.setAmount(1);
+      ItemMeta meta = btn.getItemMeta();
+      if (meta != null) {
+        plugin.getHatManager().hideAllVanillaTooltips(meta);
+        meta.displayName(plugin.parse(titleMini));
+        if (lore != null) meta.lore(lore);
+        btn.setItemMeta(meta);
+      }
+      plugin.getHatManager().applyHiddenComponentTooltips(btn);
+      return btn;
+    }
+    return createStyledButton(plugin, fallbackMat, titleMini, lore);
+  }
+
   public static ItemStack createBackButton(AntiArmorTrim plugin, String titleMini) {
-    return createStyledButton(plugin, Material.ARROW, titleMini, null);
+    String prefix = (!titleMini.contains("<glyph:") && !titleMini.contains("<sprite:")) ? "<white><glyph:previous></white> " : "";
+    List<Component> lore = List.of(
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴛᴏ ʀᴇᴛᴜʀɴ ᴛᴏ ᴛʜᴇ <#cdd6f4>ᴘʀᴇᴠɪᴏᴜѕ ᴍᴇɴᴜ<#a6adc8>.")
+    );
+    return createStyledButton(plugin, Material.ARROW, prefix + titleMini, lore);
+  }
+
+  public static ItemStack createNextButton(AntiArmorTrim plugin) {
+    List<Component> lore = List.of(
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴛᴏ ᴠɪᴇᴡ ᴛʜᴇ <#89dceb>ɴᴇхᴛ ᴘᴀɢᴇ<#a6adc8>.")
+    );
+    return createStyledButton(plugin, Material.ARROW, "<white><glyph:next></white> <#89dceb><bold>Next Page</bold>", lore);
+  }
+
+  public static ItemStack createPreviousButton(AntiArmorTrim plugin) {
+    List<Component> lore = List.of(
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴛᴏ ᴠɪᴇᴡ ᴛʜᴇ <#89dceb>ᴘʀᴇᴠɪᴏᴜѕ ᴘᴀɢᴇ<#a6adc8>.")
+    );
+    return createStyledButton(plugin, Material.ARROW, "<white><glyph:previous></white> <#89dceb><bold>Previous Page</bold>", lore);
+  }
+
+  public static ItemStack createResetButton(AntiArmorTrim plugin, String titleMini, List<Component> lore) {
+    String prefix = (!titleMini.contains("<glyph:") && !titleMini.contains("<sprite:")) ? "<white><glyph:cancel></white> " : "";
+    return createStyledButton(plugin, Material.BARRIER, prefix + titleMini, lore);
+  }
+
+  public static ItemStack createAdminButton(AntiArmorTrim plugin, String titleMini, List<Component> lore) {
+    return createStyledButton(plugin, Material.COMMAND_BLOCK, titleMini, lore);
+  }
+
+  public static ItemStack createLockedIcon(AntiArmorTrim plugin) {
+    return plugin.getHatManager().createCleanIconStack(Material.GRAY_DYE);
   }
 
   public static List<String> getLockedLoreTemplate(AntiArmorTrim plugin) {
@@ -119,7 +178,7 @@ public class TrimMenuHolder implements InventoryHolder {
     if (list == null || list.isEmpty()) {
       return List.of(
           "",
-          "<white><sprite:items:item/gray_dye></white> <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold> <#6c7086>▸ <#f38ba8>Cannot select <#6c7086>(ɴᴏ ᴘᴇʀᴍɪѕѕɪᴏɴ)",
+          "<white><glyph:locked_red></white> <#f38ba8><bold>ʟᴏᴄᴋᴇᴅ</bold> <#6c7086>▸ <#f38ba8>ᴄᴀɴɴᴏᴛ ѕᴇʟᴇᴄᴛ <#6c7086>(ɴᴏ ᴘᴇʀᴍɪѕѕɪᴏɴ)",
           "<white><sprite:items:item/name_tag></white> <#a6adc8>ʀᴇꞯᴜɪʀᴇᴅ ʀᴀɴᴋ <#6c7086>▸ <rank>"
       );
     }
@@ -152,9 +211,12 @@ public class TrimMenuHolder implements InventoryHolder {
       default -> player.isOp() || player.hasPermission(requiredPerm);
     };
     if (hasPerm) {
+      if (!lore.isEmpty() && !lore.get(lore.size() - 1).equals(Component.empty())) {
+        lore.add(Component.empty());
+      }
       String statusRaw = selected
-          ? plugin.getConfig().getString("gui.selected-status", "<white><sprite:items:item/lime_dye></white> <#a6e3a1>ѕᴛᴀᴛᴜѕ <#6c7086>▸ <#a6e3a1><bold>Selected</bold> <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
-          : plugin.getConfig().getString("gui.unselected-status", "<glyph:left_click> <#89dceb>ᴄʟɪᴄᴋ <#6c7086>▸ <#cdd6f4>Select & Equip <#6c7086>(ᴜɴѕᴇʟᴇᴄᴛᴇᴅ)");
+          ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>✔ ѕᴇʟᴇᴄᴛᴇᴅ <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
+          : plugin.getConfig().getString("gui.unselected-status", "<#89dceb>▸ ᴄʟɪᴄᴋ ᴛᴏ ѕᴇʟᴇᴄᴛ");
       lore.add(plugin.parse(statusRaw));
     } else {
       for (String line : getLockedLoreTemplate(plugin)) {

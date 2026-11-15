@@ -4,6 +4,7 @@ import com.server.antitrim.AntiArmorTrim;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -102,7 +103,7 @@ public class KillSoundStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(validSounds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killsound-title", "<#cba6f7><bold>KillSound Studio</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killsound-title", "<white><sprite:items:item/music_disc_otherside></white> <#cba6f7><bold>KillSound Studio</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLSOUND_STUDIO, null, null, currentPage);
@@ -124,49 +125,65 @@ public class KillSoundStudioGui implements Listener {
       boolean isDefault = plugin.isDbForceDefaultKillSound() && defSound != null && soundId.equalsIgnoreCase(defSound);
       boolean unlocked = plugin.getKillSoundManager().canUseSpecificKillSound(player, soundId);
 
-      Material iconMat = unlocked ? Material.MUSIC_DISC_OTHERSIDE : Material.GRAY_DYE;
-      ItemStack icon = plugin.getHatManager().createCleanIconStack(iconMat);
-      ItemMeta meta = icon.getItemMeta();
-      if (meta != null) {
-        if (unlocked) {
-          meta.displayName(plugin.getKillSoundManager().getKillSoundDisplayName(soundId));
+      ItemStack icon;
+      ItemMeta meta;
+      if (unlocked) {
+        icon = plugin.getHatManager().createCleanIconStack(Material.MUSIC_DISC_OTHERSIDE);
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.MUSIC_DISC_OTHERSIDE) + " ")
+              .append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId)));
           if (selected) meta.setEnchantmentGlintOverride(true);
-        } else {
-          meta.displayName(plugin.getKillSoundManager().getKillSoundDisplayName(soundId).append(plugin.parse(" <#6c7086>• <#f38ba8>[Locked]")));
-        }
 
-        List<Component> lore = new ArrayList<>(plugin.getKillSoundManager().getKillSoundCustomLore(soundId));
-        lore.add(plugin.parse("<#6c7086>Sound: <#a6adc8>" + soundId));
-        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Server KillSound"));
-        lore.add(plugin.parse("<glyph:right_click> <#89dceb>Right-Click: <#cdd6f4>Preview Sound"));
+          List<Component> lore = new ArrayList<>(plugin.getKillSoundManager().getKillSoundCustomLore(soundId));
+          lore.add(plugin.parse(plugin.getItemSpriteTag(Material.MUSIC_DISC_OTHERSIDE) + " <#a6adc8>ѕᴏᴜɴᴅ <#6c7086>▸ <#cdd6f4>" + soundId));
+          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴇʀᴠᴇʀ ᴋɪʟʟѕᴏᴜɴᴅ"));
+          lore.add(Component.empty());
+          lore.add(plugin.parse("<#a6e3a1>♪ <#89dceb>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴘʀᴇᴠɪᴇᴡ ᴀᴜᴅɪᴏ"));
 
-        if (unlocked) {
           String statusRaw = selected
-              ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
-              : plugin.getConfig().getString("gui.unselected-status", "<glyph:left_click> <#89dceb>Click to Select");
+              ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>✔ ѕᴇʟᴇᴄᴛᴇᴅ <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
+              : plugin.getConfig().getString("gui.unselected-status", "<#89dceb>▸ ᴄʟɪᴄᴋ ᴛᴏ ѕᴇʟᴇᴄᴛ");
           lore.add(plugin.parse(statusRaw));
-        } else {
+
+          meta.lore(lore);
+          meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, soundId);
+          icon.setItemMeta(meta);
+        }
+      } else {
+        icon = TrimMenuHolder.createLockedIcon(plugin);
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          meta.displayName(plugin.parse("<white><glyph:locked_red></white> ")
+              .append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId))
+              .append(plugin.parse(" <#6c7086>▪ <#f38ba8>[Locked]")));
+
+          List<Component> lore = new ArrayList<>(plugin.getKillSoundManager().getKillSoundCustomLore(soundId));
+          lore.add(plugin.parse("<#a6adc8>ѕᴏᴜɴᴅ <#6c7086>▸ <#cdd6f4>" + soundId));
+          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴇʀᴠᴇʀ ᴋɪʟʟѕᴏᴜɴᴅ"));
+          lore.add(plugin.parse("<#a6e3a1>♪ <#89dceb>ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴘʀᴇᴠɪᴇᴡ ᴀᴜᴅɪᴏ"));
+
           String reqPerm = plugin.getKillSoundManager().getKillSoundRequiredPermissionNode(soundId);
           for (String line : TrimMenuHolder.getLockedLoreTemplate(plugin)) {
             lore.add(plugin.parseWithPerm(line, reqPerm));
           }
+          meta.lore(lore);
+          meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, soundId);
+          icon.setItemMeta(meta);
         }
-        meta.lore(lore);
-        meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, soundId);
-        icon.setItemMeta(meta);
       }
       plugin.getHatManager().applyHiddenComponentTooltips(icon);
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Hub"));
-    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Reset & Disable KillSound</bold>", List.of(
-        plugin.parse("<#a6adc8>Disable custom KillSound."))));
-    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
-    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin KillSound Manager</bold>", List.of(
-        plugin.parse("<#a6adc8>Manage Nexo KillSounds,"),
-        plugin.parse("<#a6adc8>permission groups, or default sound."))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Hub"));
+    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createPreviousButton(plugin));
+    inv.setItem(49, TrimMenuHolder.createResetButton(plugin, "<#f38ba8><bold>Reset & Disable KillSound</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴅɪѕᴀʙʟᴇ ᴄᴜѕᴛᴏᴍ <#cdd6f4>KillSound<#a6adc8>."))));
+    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createNextButton(plugin));
+    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createAdminButton(plugin, "<#f38ba8><bold>Admin KillSound Manager</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴍᴀɴᴀɢᴇ <#cdd6f4>Nexo KillSounds<#a6adc8>,"),
+        plugin.parse("<#a6adc8>ᴘᴇʀᴍɪѕѕɪᴏɴ ɢʀᴏᴜᴘѕ, ᴏʀ ᴅᴇꜰᴀᴜʟᴛ ѕᴏᴜɴᴅ."))));
 
     player.openInventory(inv);
   }
@@ -177,7 +194,7 @@ public class KillSoundStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(soundIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killsound-admin-title", "<#f38ba8><bold>Admin KillSound Manager</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killsound-admin-title", "<white><sprite:items:item/comparator></white> <#f38ba8><bold>Admin KillSound Manager</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLSOUND_ADMIN, null, null, currentPage);
@@ -200,16 +217,18 @@ public class KillSoundStudioGui implements Listener {
       ItemStack icon = plugin.getHatManager().createCleanIconStack(Material.MUSIC_DISC_OTHERSIDE);
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
-        meta.displayName(plugin.getKillSoundManager().getKillSoundDisplayName(soundId).append(plugin.parse(" <#6c7086>(" + soundId + ")")));
+        meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.MUSIC_DISC_OTHERSIDE) + " ")
+            .append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId))
+            .append(plugin.parse(" <#6c7086>(" + soundId + ")")));
         if (isDefault && plugin.isDbForceDefaultKillSound()) meta.setEnchantmentGlintOverride(true);
         List<Component> lore = new ArrayList<>(plugin.getKillSoundManager().getKillSoundCustomLore(soundId));
-        if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>Groups: <#f9e2af>" + String.join(", ", groups)));
-        else lore.add(plugin.parse("<#a6adc8>Perm: <#6c7086>Default (" + AntiArmorTrim.KILLSOUND_PERM + ")"));
-        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Sound (" + (plugin.isDbForceDefaultKillSound() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
+        if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>ɢʀᴏᴜᴘѕ <#6c7086>▸ <#f9e2af>" + String.join(", ", groups)));
+        else lore.add(plugin.parse("<#a6adc8>ᴘᴇʀᴍ <#6c7086>▸ <#cdd6f4>Default <#6c7086>(" + AntiArmorTrim.KILLSOUND_PERM + ")"));
+        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴏᴜɴᴅ <#6c7086>(" + (plugin.isDbForceDefaultKillSound() ? "<#a6e3a1>ꜰᴏʀᴄᴇᴅ" : "<#f38ba8>ᴅɪѕᴀʙʟᴇᴅ") + "<#6c7086>)"));
         lore.add(Component.empty());
-        lore.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Edit Name & Lore"));
-        lore.add(plugin.parse("<glyph:left_click> <#f9e2af>Shift-Left-Click: <#cdd6f4>Set as Forced Default"));
-        lore.add(plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Delete KillSound"));
+        lore.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴇᴅɪᴛ ɴᴀᴍᴇ & ʟᴏʀᴇ"));
+        lore.add(plugin.parse("<#f9e2af>▸ ѕʜɪꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"));
+        lore.add(plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅᴇʟᴇᴛᴇ ᴋɪʟʟѕᴏᴜɴᴅ"));
         meta.lore(lore);
         meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, soundId);
         icon.setItemMeta(meta);
@@ -218,24 +237,24 @@ public class KillSoundStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Player View"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Player View"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Add New KillSound</bold>", List.of(
-        plugin.parse("<#a6adc8>Type a Nexo Sound ID"),
-        plugin.parse("<#a6adc8>in chat to save to database."))));
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ <#89dceb>Nexo Sound ID"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴀᴠᴇ ᴛᴏ ᴅᴀᴛᴀʙᴀѕᴇ."))));
     inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#cba6f7><bold>Permission Groups</bold>", List.of(
-        plugin.parse("<#a6adc8>Create custom permission nodes"),
-        plugin.parse("<#a6adc8>& select sounds for each rank!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>ᴄʀᴇᴀᴛᴇ ᴄᴜѕᴛᴏᴍ <#f9e2af>Permission Nodes"),
+        plugin.parse("<#a6adc8>& ѕᴇʟᴇᴄᴛ ѕᴏᴜɴᴅѕ ꜰᴏʀ ᴇᴀᴄʜ ʀᴀɴᴋ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
-    String statusText = plugin.isDbForceDefaultKillSound() ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled";
-    String defText = (defSound != null) ? "<#89dceb>" + defSound : "<#6c7086>None";
+    String statusText = plugin.isDbForceDefaultKillSound() ? "<#a6e3a1>ᴇɴᴀʙʟᴇᴅ" : "<#f38ba8>ᴅɪѕᴀʙʟᴇᴅ";
+    String defText = (defSound != null) ? "<#89dceb>" + defSound : "<#6c7086>ɴᴏɴᴇ";
     inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default</bold>", List.of(
-        plugin.parse("<#a6adc8>Status: " + statusText),
-        plugin.parse("<#a6adc8>Default Sound: " + defText),
+        plugin.parse("<#a6adc8>ѕᴛᴀᴛᴜѕ <#6c7086>▸ " + statusText),
+        plugin.parse("<#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴏᴜɴᴅ <#6c7086>▸ " + defText),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Toggle Force Default"),
-        plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Clear Default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴛᴏɢɢʟᴇ ꜰᴏʀᴄᴇ ᴅᴇꜰᴀᴜʟᴛ"),
+        plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴄʟᴇᴀʀ ᴅᴇꜰᴀᴜʟᴛ"))));
 
     player.openInventory(inv);
   }
@@ -246,7 +265,7 @@ public class KillSoundStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(permNodes.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killsound-groups-title", "<#f9e2af><bold>KillSound Perm Groups</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killsound-groups-title", "<white><sprite:items:item/tripwire_hook></white> <#f9e2af><bold>KillSound Perm Groups</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLSOUND_GROUP_LIST, null, null, currentPage);
@@ -264,16 +283,16 @@ public class KillSoundStudioGui implements Listener {
       String permNode = permNodes.get(i);
       Set<String> soundsInGroup = plugin.getDbKillSoundGroups().getOrDefault(permNode, Set.of());
       List<Component> lore = new ArrayList<>(List.of(
-          plugin.parse("<#a6adc8>Permission: <#f9e2af>" + permNode),
-          plugin.parse("<#a6adc8>Selected Sounds: <#a6e3a1>" + soundsInGroup.size())));
+          plugin.parse("<#a6adc8>ᴘᴇʀᴍɪѕѕɪᴏɴ <#6c7086>▸ <#f9e2af>" + permNode),
+          plugin.parse("<#a6adc8>Selected Sounds <#6c7086>▸ <#a6e3a1>" + soundsInGroup.size())));
       if (!soundsInGroup.isEmpty()) {
         String previewList = String.join(", ", soundsInGroup.stream().limit(5).toList());
         if (soundsInGroup.size() > 5) previewList += "...";
         lore.add(plugin.parse("<#6c7086>(" + previewList + ")"));
       }
       lore.add(Component.empty());
-      lore.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Select KillSounds"));
-      lore.add(plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Delete Group"));
+      lore.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇʟᴇᴄᴛ ᴋɪʟʟѕᴏᴜɴᴅѕ"));
+      lore.add(plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅᴇʟᴇᴛᴇ ɢʀᴏᴜᴘ"));
 
       ItemStack icon = TrimMenuHolder.createStyledButton(plugin, Material.TRIPWIRE_HOOK, "<#cba6f7><bold>" + permNode + "</bold>", lore);
       ItemMeta meta = icon.getItemMeta();
@@ -285,12 +304,12 @@ public class KillSoundStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Admin"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Admin"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Create New Group</bold>", List.of(
-        plugin.parse("<#a6adc8>Type a new permission node"),
-        plugin.parse("<#a6adc8>in chat to select sounds for it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ ɴᴇᴡ <#f9e2af>Permission Node"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴇʟᴇᴄᴛ ѕᴏᴜɴᴅѕ ꜰᴏʀ ɪᴛ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
     player.openInventory(inv);
   }
@@ -301,7 +320,7 @@ public class KillSoundStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(soundIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killsound-group-select-title", "<#cba6f7><bold>KS Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killsound-group-select-title", "<white><sprite:items:item/comparator></white> <#cba6f7><bold>KS Group</bold> <#6c7086>▪ <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("perm", permNode), Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLSOUND_GROUP_SELECTOR, null, permNode, currentPage);
@@ -322,17 +341,19 @@ public class KillSoundStudioGui implements Listener {
       ItemStack icon = plugin.getHatManager().createCleanIconStack(Material.MUSIC_DISC_OTHERSIDE);
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
-        meta.displayName(plugin.getKillSoundManager().getKillSoundDisplayName(soundId).append(plugin.parse(" <#6c7086>(" + soundId + ")")));
+        meta.displayName(plugin.parse(plugin.getItemSpriteTag(Material.MUSIC_DISC_OTHERSIDE) + " ")
+            .append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId))
+            .append(plugin.parse(" <#6c7086>(" + soundId + ")")));
         if (inGroup) meta.setEnchantmentGlintOverride(true);
 
         List<Component> lore = new ArrayList<>(plugin.getKillSoundManager().getKillSoundCustomLore(soundId));
         lore.add(Component.empty());
         if (inGroup) {
-          lore.add(plugin.parse("<#a6e3a1>Included in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<glyph:right_click> <#fab387>Click to remove from this group"));
+          lore.add(plugin.parse("<#a6e3a1>✔ ɪɴᴄʟᴜᴅᴇᴅ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#fab387>▸ ᴄʟɪᴄᴋ ᴛᴏ ʀᴇᴍᴏᴠᴇ ꜰʀᴏᴍ ɢʀᴏᴜᴘ"));
         } else {
-          lore.add(plugin.parse("<#6c7086>Not in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<glyph:left_click> <#89dceb>Click to add to this group"));
+          lore.add(plugin.parse("<#6c7086>✖ ɴᴏᴛ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#89dceb>▸ ᴄʟɪᴄᴋ ᴛᴏ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ"));
         }
         meta.lore(lore);
         meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, soundId);
@@ -342,20 +363,20 @@ public class KillSoundStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Groups"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Groups"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     Set<String> selectedSet = plugin.getDbKillSoundGroups().getOrDefault(permNode.toLowerCase(), Set.of());
     inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#f9e2af><bold>Editing: " + permNode + "</bold>", List.of(
-        plugin.parse("<#a6adc8>Total Sounds: <#a6e3a1>" + selectedSet.size()),
-        plugin.parse("<#a6adc8>Click any sound above to toggle it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>Total Sounds <#6c7086>▸ <#a6e3a1>" + selectedSet.size()),
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴀɴʏ ѕᴏᴜɴᴅ ᴀʙᴏᴠᴇ ᴛᴏ ᴛᴏɢɢʟᴇ ɪᴛ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
     player.openInventory(inv);
   }
 
   public static void openEditorMenu(AntiArmorTrim plugin, Player player, String soundId) {
     ensureRegistered(plugin);
-    String rawTitle = plugin.getConfig().getString("gui.killsound-editor-title", "<#cba6f7><bold>Edit KillSound:</bold> <#89dceb><id>");
+    String rawTitle = plugin.getConfig().getString("gui.killsound-editor-title", "<white><sprite:items:item/nether_star></white> <#cba6f7><bold>Edit KillSound</bold> <#6c7086>▪ <#89dceb><id>");
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLSOUND_EDITOR, null, soundId, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, plugin.parse(rawTitle, Placeholder.unparsed("id", soundId)));
     holder.setInventory(inv);
@@ -364,40 +385,41 @@ public class KillSoundStudioGui implements Listener {
     for (int i = 0; i < 27; i++) inv.setItem(i, border);
 
     inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#89dceb><bold>Edit Display Name</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: ").append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId)),
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ ").append(plugin.getKillSoundManager().getKillSoundDisplayName(soundId)),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set new display name"),
-        plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Reset to default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ɴᴇᴡ ᴅɪѕᴘʟᴀʏ ɴᴀᴍᴇ"),
+        plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ʀᴇѕᴇᴛ ᴛᴏ ᴅᴇꜰᴀᴜʟᴛ"))));
 
     List<Component> loreList = new ArrayList<>();
     List<Component> currentLore = plugin.getKillSoundManager().getKillSoundCustomLore(soundId);
-    if (currentLore.isEmpty()) loreList.add(plugin.parse("<#6c7086>No lore configured"));
+    if (currentLore.isEmpty()) loreList.add(plugin.parse("<#6c7086>ɴᴏ ʟᴏʀᴇ ᴄᴏɴꜰɪɢᴜʀᴇᴅ"));
     else loreList.addAll(currentLore);
     loreList.add(Component.empty());
-    loreList.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set/append lore in chat"));
-    loreList.add(plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Clear custom lore"));
+    loreList.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ/ᴀᴘᴘᴇɴᴅ ʟᴏʀᴇ"));
+    loreList.add(plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴄʟᴇᴀʀ ᴄᴜѕᴛᴏᴍ ʟᴏʀᴇ"));
     inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.WRITABLE_BOOK, "<#cba6f7><bold>Edit KillSound Lore</bold>", loreList));
 
     List<String> groups = plugin.getKillSoundManager().getGroupsContainingKillSound(soundId);
     inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#a6e3a1><bold>Permission Groups</bold>", List.of(
-        plugin.parse("<#a6adc8>Assigned: <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
+        plugin.parse("<#a6adc8>ᴀѕѕɪɢɴᴇᴅ <#6c7086>▸ <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open Group Manager"))));
+        plugin.parse("<#89dceb>▸ ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴏᴘᴇɴ ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇʀ"))));
 
     inv.setItem(14, TrimMenuHolder.createStyledButton(plugin, Material.JUKEBOX, "<#89dceb><bold>Preview KillSound</bold>", List.of(
-        plugin.parse("<#a6adc8>Sound ID: <#f9e2af>" + soundId),
+        plugin.parse("<#a6adc8>ѕᴏᴜɴᴅ ɪᴅ <#6c7086>▸ <#f9e2af>" + soundId),
         Component.empty(),
-        plugin.parse("<#a6e3a1>Click to test play this sound!"))));
+        plugin.parse("<#a6e3a1>♪ <#a6e3a1>ᴄʟɪᴄᴋ ᴛᴏ ᴛᴇѕᴛ ᴘʟᴀʏ ᴛʜɪѕ ѕᴏᴜɴᴅ!"))));
 
     boolean isDef = plugin.isDbForceDefaultKillSound() && soundId.equalsIgnoreCase(plugin.getDbDefaultKillSound());
     inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: " + (isDef ? "<#a6e3a1>Active Default" : "<#6c7086>Not Default")),
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ " + (isDef ? "<#a6e3a1>ᴀᴄᴛɪᴠᴇ ᴅᴇꜰᴀᴜʟᴛ" : "<#6c7086>ɴᴏᴛ ᴅᴇꜰᴀᴜʟᴛ")),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set as Forced Default"),
-        plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Disable Forced Default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"),
+        plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅɪѕᴀʙʟᴇ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"))));
 
-    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Delete KillSound</bold>", List.of(plugin.parse("<#a6adc8>Remove <#f9e2af>" + soundId + " <#a6adc8>from database."))));
-    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Admin"));
+    inv.setItem(16, TrimMenuHolder.createResetButton(plugin, "<#f38ba8><bold>Delete KillSound</bold>", List.of(
+        plugin.parse("<#a6adc8>ʀᴇᴍᴏᴠᴇ <#f9e2af>" + soundId + " <#a6adc8>ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀѕᴇ."))));
+    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Admin"));
     player.openInventory(inv);
   }
 
@@ -657,6 +679,15 @@ public class KillSoundStudioGui implements Listener {
     }
   }
 
+  private String extractChatInput(AsyncChatEvent event) {
+    try {
+      if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+        return event.signedMessage().message().trim();
+      }
+    } catch (Throwable ignored) {}
+    return PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+  }
+
   @EventHandler(priority = EventPriority.LOWEST)
   public void onChatInput(AsyncChatEvent event) {
     Player player = event.getPlayer();
@@ -664,7 +695,7 @@ public class KillSoundStudioGui implements Listener {
 
     if (pendingCreateKillSoundGroupPlayers.remove(uuid)) {
       event.setCancelled(true);
-      String rawPerm = event.signedMessage().message().trim();
+      String rawPerm = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (rawPerm.equalsIgnoreCase("cancel")) {
@@ -684,7 +715,7 @@ public class KillSoundStudioGui implements Listener {
 
     if (pendingAddKillSoundPlayers.remove(uuid)) {
       event.setCancelled(true);
-      String rawId = event.signedMessage().message().trim();
+      String rawId = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (rawId.equalsIgnoreCase("cancel")) {
@@ -710,7 +741,7 @@ public class KillSoundStudioGui implements Listener {
     String editingNameSoundId = pendingKillSoundNameEdit.remove(uuid);
     if (editingNameSoundId != null) {
       event.setCancelled(true);
-      String rawInput = event.signedMessage().message().trim();
+      String rawInput = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (rawInput.equalsIgnoreCase("cancel")) {
@@ -730,7 +761,7 @@ public class KillSoundStudioGui implements Listener {
     String editingLoreSoundId = pendingKillSoundLoreEdit.remove(uuid);
     if (editingLoreSoundId != null) {
       event.setCancelled(true);
-      String rawInput = event.signedMessage().message().trim();
+      String rawInput = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (rawInput.equalsIgnoreCase("cancel")) {

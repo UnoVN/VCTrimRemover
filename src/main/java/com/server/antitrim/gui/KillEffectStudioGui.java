@@ -50,8 +50,18 @@ public class KillEffectStudioGui implements Listener {
 
   public static void handleCommand(AntiArmorTrim plugin, Player p, String[] args) {
     ensureRegistered(plugin);
-    if (args.length == 0) { openPlayerMenu(plugin, p, 0); return; }
+    if (args.length == 0) { KillEffectHubGui.open(plugin, p); return; }
     String sub = args[0].toLowerCase();
+    if (sub.equals("classic") || sub.equals("vanilla") || sub.equals("particle")) {
+      p.closeInventory();
+      p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f);
+      p.performCommand("killeffects");
+      return;
+    }
+    if (sub.equals("3d") || sub.equals("modern") || sub.equals("model") || sub.equals("models")) {
+      openPlayerMenu(plugin, p, 0);
+      return;
+    }
     if (sub.equals("admin") || sub.equals("add") || sub.equals("edit") || sub.equals("remove")
         || sub.equals("delete") || sub.equals("default") || sub.equals("groups") || sub.equals("group")) {
       if (!plugin.hasAdminPerm(p)) { p.sendMessage(plugin.getMessage("no-permission")); return; }
@@ -93,7 +103,7 @@ public class KillEffectStudioGui implements Listener {
       openAdminMenu(plugin, p, 0);
       return;
     }
-    openPlayerMenu(plugin, p, 0);
+    KillEffectHubGui.open(plugin, p);
   }
 
   public static void openPlayerMenu(AntiArmorTrim plugin, Player player, int page) {
@@ -103,7 +113,7 @@ public class KillEffectStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(validEffects.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killeffect-title", "<#cba6f7><bold>KillEffect Studio</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killeffect-title", "<white><sprite:items:item/totem_of_undying></white> <#cba6f7><bold>KillEffect Studio</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLEFFECT_STUDIO, null, null, currentPage);
@@ -125,49 +135,66 @@ public class KillEffectStudioGui implements Listener {
       boolean isDefault = plugin.isDbForceDefaultKillEffect() && defEffect != null && effectId.equalsIgnoreCase(defEffect);
       boolean unlocked = plugin.getKillEffectManager().canUseSpecificKillEffect(player, effectId);
 
-      Material iconMat = unlocked ? plugin.getKillEffectManager().getKillEffectIconMaterial(effectId) : Material.GRAY_DYE;
-      ItemStack icon = plugin.getHatManager().createCleanIconStack(iconMat);
-      ItemMeta meta = icon.getItemMeta();
-      if (meta != null) {
-        if (unlocked) {
-          meta.displayName(plugin.getKillEffectManager().getKillEffectDisplayName(effectId));
+      ItemStack icon;
+      ItemMeta meta;
+      if (unlocked) {
+        Material iconMat = plugin.getKillEffectManager().getKillEffectIconMaterial(effectId);
+        icon = plugin.getHatManager().createCleanIconStack(iconMat);
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " ")
+              .append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId)));
           if (selected) meta.setEnchantmentGlintOverride(true);
-        } else {
-          meta.displayName(plugin.getKillEffectManager().getKillEffectDisplayName(effectId).append(plugin.parse(" <#6c7086>• <#f38ba8>[Locked]")));
-        }
 
-        List<Component> lore = new ArrayList<>(plugin.getKillEffectManager().getKillEffectCustomLore(effectId));
-        lore.add(plugin.parse("<#6c7086>Model: <#a6adc8>" + effectId));
-        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Server KillEffect"));
-        lore.add(plugin.parse("<glyph:right_click> <#89dceb>Right-Click: <#cdd6f4>Preview 3D Model"));
+          List<Component> lore = new ArrayList<>(plugin.getKillEffectManager().getKillEffectCustomLore(effectId));
+          lore.add(plugin.parse(plugin.getItemSpriteTag(iconMat) + " <#a6adc8>ᴍᴏᴅᴇʟ <#6c7086>▸ <#cdd6f4>" + effectId));
+          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴇʀᴠᴇʀ ᴋɪʟʟᴇꜰꜰᴇᴄᴛ"));
+          lore.add(Component.empty());
+          lore.add(plugin.parse("<#cba6f7>✦ <#89dceb>Right-Click <#6c7086>▪ <#cdd6f4>Preview 3D Model"));
 
-        if (unlocked) {
           String statusRaw = selected
-              ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>● Selected")
-              : plugin.getConfig().getString("gui.unselected-status", "<glyph:left_click> <#89dceb>Click to Select");
+              ? plugin.getConfig().getString("gui.selected-status", "<#a6e3a1>✔ ѕᴇʟᴇᴄᴛᴇᴅ <#6c7086>(ᴀᴄᴛɪᴠᴇ)")
+              : plugin.getConfig().getString("gui.unselected-status", "<#89dceb>▸ ᴄʟɪᴄᴋ ᴛᴏ ѕᴇʟᴇᴄᴛ");
           lore.add(plugin.parse(statusRaw));
-        } else {
+
+          meta.lore(lore);
+          meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, effectId);
+          icon.setItemMeta(meta);
+        }
+      } else {
+        icon = TrimMenuHolder.createLockedIcon(plugin);
+        meta = icon.getItemMeta();
+        if (meta != null) {
+          meta.displayName(plugin.parse("<white><glyph:locked_red></white> ")
+              .append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId))
+              .append(plugin.parse(" <#6c7086>▪ <#f38ba8>[Locked]")));
+
+          List<Component> lore = new ArrayList<>(plugin.getKillEffectManager().getKillEffectCustomLore(effectId));
+          lore.add(plugin.parse("<#a6adc8>ᴍᴏᴅᴇʟ <#6c7086>▸ <#cdd6f4>" + effectId));
+          if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ѕᴇʀᴠᴇʀ ᴋɪʟʟᴇꜰꜰᴇᴄᴛ"));
+          lore.add(plugin.parse("<#cba6f7>✦ <#89dceb>Right-Click <#6c7086>▪ <#cdd6f4>Preview 3D Model"));
+
           String reqPerm = plugin.getKillEffectManager().getKillEffectRequiredPermissionNode(effectId);
           for (String line : TrimMenuHolder.getLockedLoreTemplate(plugin)) {
             lore.add(plugin.parseWithPerm(line, reqPerm));
           }
+          meta.lore(lore);
+          meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, effectId);
+          icon.setItemMeta(meta);
         }
-        meta.lore(lore);
-        meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, effectId);
-        icon.setItemMeta(meta);
       }
       plugin.getHatManager().applyHiddenComponentTooltips(icon);
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Hub"));
-    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
-    inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Reset & Disable Effect</bold>", List.of(
-        plugin.parse("<#a6adc8>Disable active 3D KillEffect."))));
-    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
-    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.COMMAND_BLOCK, "<#f38ba8><bold>Admin KillEffect Manager</bold>", List.of(
-        plugin.parse("<#a6adc8>Manage ModelEngine models,"),
-        plugin.parse("<#a6adc8>permission groups, or default effect."))));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Menu"));
+    if (currentPage > 0) inv.setItem(48, TrimMenuHolder.createPreviousButton(plugin));
+    inv.setItem(49, TrimMenuHolder.createResetButton(plugin, "<#f38ba8><bold>Reset & Disable Effect</bold>", List.of(
+        plugin.parse("<#a6adc8>Disable active <#cdd6f4>3D KillEffect<#a6adc8>."))));
+    if (currentPage + 1 < totalPages) inv.setItem(50, TrimMenuHolder.createNextButton(plugin));
+    if (plugin.hasAdminPerm(player)) inv.setItem(53, TrimMenuHolder.createAdminButton(plugin, "<#f38ba8><bold>Admin KillEffect Manager</bold>", List.of(
+        plugin.parse("<#a6adc8>ᴍᴀɴᴀɢᴇ <#cdd6f4>ModelEngine Models<#a6adc8>,"),
+        plugin.parse("<#a6adc8>ᴘᴇʀᴍɪѕѕɪᴏɴ ɢʀᴏᴜᴘѕ, ᴏʀ ᴅᴇꜰᴀᴜʟᴛ ᴇꜰꜰᴇᴄᴛ."))));
 
     player.openInventory(inv);
   }
@@ -178,7 +205,7 @@ public class KillEffectStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(effectIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killeffect-admin-title", "<#f38ba8><bold>Admin KillEffect Manager</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killeffect-admin-title", "<white><sprite:items:item/comparator></white> <#f38ba8><bold>Admin KillEffect Manager</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLEFFECT_ADMIN, null, null, currentPage);
@@ -202,16 +229,18 @@ public class KillEffectStudioGui implements Listener {
       ItemStack icon = plugin.getHatManager().createCleanIconStack(iconMat);
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
-        meta.displayName(plugin.getKillEffectManager().getKillEffectDisplayName(effectId).append(plugin.parse(" <#6c7086>(" + effectId + ")")));
+        meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " ")
+            .append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId))
+            .append(plugin.parse(" <#6c7086>(" + effectId + ")")));
         if (isDefault && plugin.isDbForceDefaultKillEffect()) meta.setEnchantmentGlintOverride(true);
         List<Component> lore = new ArrayList<>(plugin.getKillEffectManager().getKillEffectCustomLore(effectId));
-        if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>Groups: <#f9e2af>" + String.join(", ", groups)));
-        else lore.add(plugin.parse("<#a6adc8>Perm: <#6c7086>Default (" + AntiArmorTrim.KILLEFFECT_PERM + ")"));
-        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ Default Effect (" + (plugin.isDbForceDefaultKillEffect() ? "<#a6e3a1>Forced" : "<#f38ba8>Disabled") + "<#f9e2af>)"));
+        if (!groups.isEmpty()) lore.add(plugin.parse("<#a6adc8>ɢʀᴏᴜᴘѕ <#6c7086>▸ <#f9e2af>" + String.join(", ", groups)));
+        else lore.add(plugin.parse("<#a6adc8>ᴘᴇʀᴍ <#6c7086>▸ <#cdd6f4>Default <#6c7086>(" + AntiArmorTrim.KILLEFFECT_PERM + ")"));
+        if (isDefault) lore.add(plugin.parse("<#f9e2af>★ <#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ᴇꜰꜰᴇᴄᴛ <#6c7086>(" + (plugin.isDbForceDefaultKillEffect() ? "<#a6e3a1>ꜰᴏʀᴄᴇᴅ" : "<#f38ba8>ᴅɪѕᴀʙʟᴇᴅ") + "<#6c7086>)"));
         lore.add(Component.empty());
-        lore.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Edit Name & Lore"));
-        lore.add(plugin.parse("<glyph:left_click> <#f9e2af>Shift-Left-Click: <#cdd6f4>Set as Forced Default"));
-        lore.add(plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Delete KillEffect"));
+        lore.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴇᴅɪᴛ ɴᴀᴍᴇ & ʟᴏʀᴇ"));
+        lore.add(plugin.parse("<#f9e2af>▸ ѕʜɪꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"));
+        lore.add(plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅᴇʟᴇᴛᴇ ᴋɪʟʟᴇꜰꜰᴇᴄᴛ"));
         meta.lore(lore);
         meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, effectId);
         icon.setItemMeta(meta);
@@ -220,24 +249,24 @@ public class KillEffectStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Player View"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Player View"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     inv.setItem(48, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Add New KillEffect</bold>", List.of(
-        plugin.parse("<#a6adc8>Type a ModelEngine Blueprint ID"),
-        plugin.parse("<#a6adc8>in chat to save to database."))));
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ <#89dceb>ModelEngine Blueprint ID"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴀᴠᴇ ᴛᴏ ᴅᴀᴛᴀʙᴀѕᴇ."))));
     inv.setItem(50, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#cba6f7><bold>KillEffect Groups</bold>", List.of(
-        plugin.parse("<#a6adc8>Create custom permission nodes"),
-        plugin.parse("<#a6adc8>& select effects for each rank!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>ᴄʀᴇᴀᴛᴇ ᴄᴜѕᴛᴏᴍ <#f9e2af>Permission Nodes"),
+        plugin.parse("<#a6adc8>& ѕᴇʟᴇᴄᴛ ᴇꜰꜰᴇᴄᴛѕ ꜰᴏʀ ᴇᴀᴄʜ ʀᴀɴᴋ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
-    String statusText = plugin.isDbForceDefaultKillEffect() ? "<#a6e3a1>Enabled" : "<#f38ba8>Disabled";
-    String defText = (defEffect != null) ? "<#89dceb>" + defEffect : "<#6c7086>None";
+    String statusText = plugin.isDbForceDefaultKillEffect() ? "<#a6e3a1>ᴇɴᴀʙʟᴇᴅ" : "<#f38ba8>ᴅɪѕᴀʙʟᴇᴅ";
+    String defText = (defEffect != null) ? "<#89dceb>" + defEffect : "<#6c7086>ɴᴏɴᴇ";
     inv.setItem(53, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default</bold>", List.of(
-        plugin.parse("<#a6adc8>Status: " + statusText),
-        plugin.parse("<#a6adc8>Default Effect: " + defText),
+        plugin.parse("<#a6adc8>ѕᴛᴀᴛᴜѕ <#6c7086>▸ " + statusText),
+        plugin.parse("<#a6adc8>ᴅᴇꜰᴀᴜʟᴛ ᴇꜰꜰᴇᴄᴛ <#6c7086>▸ " + defText),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Toggle Force Default"),
-        plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Clear Default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴛᴏɢɢʟᴇ ꜰᴏʀᴄᴇ ᴅᴇꜰᴀᴜʟᴛ"),
+        plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴄʟᴇᴀʀ ᴅᴇꜰᴀᴜʟᴛ"))));
 
     player.openInventory(inv);
   }
@@ -248,7 +277,7 @@ public class KillEffectStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(permNodes.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killeffect-groups-title", "<#f9e2af><bold>KillEffect Perm Groups</bold> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killeffect-groups-title", "<white><sprite:items:item/tripwire_hook></white> <#f9e2af><bold>KillEffect Perm Groups</bold> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLEFFECT_GROUP_LIST, null, null, currentPage);
@@ -266,16 +295,16 @@ public class KillEffectStudioGui implements Listener {
       String permNode = permNodes.get(i);
       Set<String> effectsInGroup = plugin.getDbKillEffectGroups().getOrDefault(permNode, Set.of());
       List<Component> lore = new ArrayList<>(List.of(
-          plugin.parse("<#a6adc8>Permission: <#f9e2af>" + permNode),
-          plugin.parse("<#a6adc8>Selected Effects: <#a6e3a1>" + effectsInGroup.size())));
+          plugin.parse("<#a6adc8>ᴘᴇʀᴍɪѕѕɪᴏɴ <#6c7086>▸ <#f9e2af>" + permNode),
+          plugin.parse("<#a6adc8>Selected Effects <#6c7086>▸ <#a6e3a1>" + effectsInGroup.size())));
       if (!effectsInGroup.isEmpty()) {
         String previewList = String.join(", ", effectsInGroup.stream().limit(5).toList());
         if (effectsInGroup.size() > 5) previewList += "...";
         lore.add(plugin.parse("<#6c7086>(" + previewList + ")"));
       }
       lore.add(Component.empty());
-      lore.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Select KillEffects"));
-      lore.add(plugin.parse("<glyph:right_click> <#f38ba8>Right-Click: <#cdd6f4>Delete Group"));
+      lore.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇʟᴇᴄᴛ ᴋɪʟʟᴇꜰꜰᴇᴄᴛѕ"));
+      lore.add(plugin.parse("<#f38ba8>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅᴇʟᴇᴛᴇ ɢʀᴏᴜᴘ"));
 
       ItemStack icon = TrimMenuHolder.createStyledButton(plugin, Material.TRIPWIRE_HOOK, "<#cba6f7><bold>" + permNode + "</bold>", lore);
       ItemMeta meta = icon.getItemMeta();
@@ -287,12 +316,12 @@ public class KillEffectStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Admin"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Admin"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.ANVIL, "<#a6e3a1><bold>Create New Group</bold>", List.of(
-        plugin.parse("<#a6adc8>Type a new permission node"),
-        plugin.parse("<#a6adc8>in chat to select effects for it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>ᴛʏᴘᴇ ᴀ ɴᴇᴡ <#f9e2af>Permission Node"),
+        plugin.parse("<#a6adc8>ɪɴ ᴄʜᴀᴛ ᴛᴏ ѕᴇʟᴇᴄᴛ ᴇꜰꜰᴇᴄᴛѕ ꜰᴏʀ ɪᴛ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
     player.openInventory(inv);
   }
@@ -303,7 +332,7 @@ public class KillEffectStudioGui implements Listener {
     int totalPages = Math.max(1, (int) Math.ceil(effectIds.size() / 36.0));
     int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
-    String rawTitle = plugin.getConfig().getString("gui.killeffect-group-select-title", "<#cba6f7><bold>KE Group:</bold> <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
+    String rawTitle = plugin.getConfig().getString("gui.killeffect-group-select-title", "<white><sprite:items:item/comparator></white> <#cba6f7><bold>KE Group</bold> <#6c7086>▪ <#89dceb><perm> <#6c7086>(<page>/<max_page>)");
     Component title = plugin.parse(rawTitle, Placeholder.unparsed("perm", permNode), Placeholder.unparsed("page", String.valueOf(currentPage + 1)), Placeholder.unparsed("max_page", String.valueOf(totalPages)));
 
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLEFFECT_GROUP_SELECTOR, null, permNode, currentPage);
@@ -325,17 +354,19 @@ public class KillEffectStudioGui implements Listener {
       ItemStack icon = plugin.getHatManager().createCleanIconStack(iconMat);
       ItemMeta meta = icon.getItemMeta();
       if (meta != null) {
-        meta.displayName(plugin.getKillEffectManager().getKillEffectDisplayName(effectId).append(plugin.parse(" <#6c7086>(" + effectId + ")")));
+        meta.displayName(plugin.parse(plugin.getItemSpriteTag(iconMat) + " ")
+            .append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId))
+            .append(plugin.parse(" <#6c7086>(" + effectId + ")")));
         if (inGroup) meta.setEnchantmentGlintOverride(true);
 
         List<Component> lore = new ArrayList<>(plugin.getKillEffectManager().getKillEffectCustomLore(effectId));
         lore.add(Component.empty());
         if (inGroup) {
-          lore.add(plugin.parse("<#a6e3a1>Included in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<glyph:right_click> <#fab387>Click to remove from this group"));
+          lore.add(plugin.parse("<#a6e3a1>✔ ɪɴᴄʟᴜᴅᴇᴅ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#fab387>▸ ᴄʟɪᴄᴋ ᴛᴏ ʀᴇᴍᴏᴠᴇ ꜰʀᴏᴍ ɢʀᴏᴜᴘ"));
         } else {
-          lore.add(plugin.parse("<#6c7086>Not in <#f9e2af>" + permNode));
-          lore.add(plugin.parse("<glyph:left_click> <#89dceb>Click to add to this group"));
+          lore.add(plugin.parse("<#6c7086>✖ ɴᴏᴛ ɪɴ <#f9e2af>" + permNode));
+          lore.add(plugin.parse("<#89dceb>▸ ᴄʟɪᴄᴋ ᴛᴏ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ"));
         }
         meta.lore(lore);
         meta.getPersistentDataContainer().set(plugin.getHatManager().getItemAppliedHatKey(), PersistentDataType.STRING, effectId);
@@ -345,20 +376,20 @@ public class KillEffectStudioGui implements Listener {
       inv.setItem(slotIndex++, icon);
     }
 
-    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Groups"));
-    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Previous Page</bold>", null));
+    inv.setItem(45, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Groups"));
+    if (currentPage > 0) inv.setItem(47, TrimMenuHolder.createPreviousButton(plugin));
     Set<String> selectedSet = plugin.getDbKillEffectGroups().getOrDefault(permNode.toLowerCase(), Set.of());
     inv.setItem(49, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#f9e2af><bold>Editing: " + permNode + "</bold>", List.of(
-        plugin.parse("<#a6adc8>Total Effects: <#a6e3a1>" + selectedSet.size()),
-        plugin.parse("<#a6adc8>Click any effect above to toggle it!"))));
-    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createStyledButton(plugin, Material.ARROW, "<#89dceb><bold>Next Page</bold>", null));
+        plugin.parse("<#a6adc8>Total Effects <#6c7086>▸ <#a6e3a1>" + selectedSet.size()),
+        plugin.parse("<#a6adc8>ᴄʟɪᴄᴋ ᴀɴʏ ᴇꜰꜰᴇᴄᴛ ᴀʙᴏᴠᴇ ᴛᴏ ᴛᴏɢɢʟᴇ ɪᴛ."))));
+    if (currentPage + 1 < totalPages) inv.setItem(51, TrimMenuHolder.createNextButton(plugin));
 
     player.openInventory(inv);
   }
 
   public static void openEditorMenu(AntiArmorTrim plugin, Player player, String effectId) {
     ensureRegistered(plugin);
-    String rawTitle = plugin.getConfig().getString("gui.killeffect-editor-title", "<#cba6f7><bold>Edit KillEffect:</bold> <#89dceb><id>");
+    String rawTitle = plugin.getConfig().getString("gui.killeffect-editor-title", "<white><sprite:items:item/nether_star></white> <#cba6f7><bold>Edit KillEffect</bold> <#6c7086>▪ <#89dceb><id>");
     TrimMenuHolder holder = new TrimMenuHolder(TrimMenuHolder.MenuType.KILLEFFECT_EDITOR, null, effectId, 0);
     Inventory inv = Bukkit.createInventory(holder, 27, plugin.parse(rawTitle, Placeholder.unparsed("id", effectId)));
     holder.setInventory(inv);
@@ -367,40 +398,41 @@ public class KillEffectStudioGui implements Listener {
     for (int i = 0; i < 27; i++) inv.setItem(i, border);
 
     inv.setItem(10, TrimMenuHolder.createStyledButton(plugin, Material.NAME_TAG, "<#89dceb><bold>Edit Display Name</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: ").append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId)),
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ ").append(plugin.getKillEffectManager().getKillEffectDisplayName(effectId)),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set new display name"),
-        plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Reset to default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ɴᴇᴡ ᴅɪѕᴘʟᴀʏ ɴᴀᴍᴇ"),
+        plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ʀᴇѕᴇᴛ ᴛᴏ ᴅᴇꜰᴀᴜʟᴛ"))));
 
     List<Component> loreList = new ArrayList<>();
     List<Component> currentLore = plugin.getKillEffectManager().getKillEffectCustomLore(effectId);
-    if (currentLore.isEmpty()) loreList.add(plugin.parse("<#6c7086>No lore configured"));
+    if (currentLore.isEmpty()) loreList.add(plugin.parse("<#6c7086>ɴᴏ ʟᴏʀᴇ ᴄᴏɴꜰɪɢᴜʀᴇᴅ"));
     else loreList.addAll(currentLore);
     loreList.add(Component.empty());
-    loreList.add(plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set/append lore in chat"));
-    loreList.add(plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Clear custom lore"));
+    loreList.add(plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ/ᴀᴘᴘᴇɴᴅ ʟᴏʀᴇ"));
+    loreList.add(plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴄʟᴇᴀʀ ᴄᴜѕᴛᴏᴍ ʟᴏʀᴇ"));
     inv.setItem(11, TrimMenuHolder.createStyledButton(plugin, Material.WRITABLE_BOOK, "<#cba6f7><bold>Edit KillEffect Lore</bold>", loreList));
 
     List<String> groups = plugin.getKillEffectManager().getGroupsContainingKillEffect(effectId);
     inv.setItem(12, TrimMenuHolder.createStyledButton(plugin, Material.BOOKSHELF, "<#a6e3a1><bold>Permission Groups</bold>", List.of(
-        plugin.parse("<#a6adc8>Assigned: <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
+        plugin.parse("<#a6adc8>ᴀѕѕɪɢɴᴇᴅ <#6c7086>▸ <#f9e2af>" + (groups.isEmpty() ? "None (Default)" : String.join(", ", groups))),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Click: <#cdd6f4>Open Group Manager"))));
+        plugin.parse("<#89dceb>▸ ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴏᴘᴇɴ ɢʀᴏᴜᴘ ᴍᴀɴᴀɢᴇʀ"))));
 
     inv.setItem(14, TrimMenuHolder.createStyledButton(plugin, Material.ENDER_EYE, "<#89dceb><bold>Preview 3D KillEffect</bold>", List.of(
-        plugin.parse("<#a6adc8>Model ID: <#f9e2af>" + effectId),
+        plugin.parse("<#a6adc8>ᴍᴏᴅᴇʟ ɪᴅ <#6c7086>▸ <#f9e2af>" + effectId),
         Component.empty(),
-        plugin.parse("<#a6e3a1>Click to test spawn this 3D model!"))));
+        plugin.parse("<#cba6f7>✦ <#a6e3a1>Click to test spawn this 3D model!"))));
 
     boolean isDef = plugin.isDbForceDefaultKillEffect() && effectId.equalsIgnoreCase(plugin.getDbDefaultKillEffect());
     inv.setItem(15, TrimMenuHolder.createStyledButton(plugin, Material.NETHER_STAR, "<#f9e2af><bold>Force Default</bold>", List.of(
-        plugin.parse("<#a6adc8>Current: " + (isDef ? "<#a6e3a1>Active Default" : "<#6c7086>Not Default")),
+        plugin.parse("<#a6adc8>ᴄᴜʀʀᴇɴᴛ <#6c7086>▸ " + (isDef ? "<#a6e3a1>ᴀᴄᴛɪᴠᴇ ᴅᴇꜰᴀᴜʟᴛ" : "<#6c7086>ɴᴏᴛ ᴅᴇꜰᴀᴜʟᴛ")),
         Component.empty(),
-        plugin.parse("<glyph:left_click> <#89dceb>Left-Click: <#cdd6f4>Set as Forced Default"),
-        plugin.parse("<glyph:right_click> <#fab387>Right-Click: <#cdd6f4>Disable Forced Default"))));
+        plugin.parse("<#89dceb>▸ ʟᴇꜰᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ѕᴇᴛ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"),
+        plugin.parse("<#fab387>▸ ʀɪɢʜᴛ-ᴄʟɪᴄᴋ <#6c7086>▪ <#cdd6f4>ᴅɪѕᴀʙʟᴇ ꜰᴏʀᴄᴇᴅ ᴅᴇꜰᴀᴜʟᴛ"))));
 
-    inv.setItem(16, TrimMenuHolder.createStyledButton(plugin, Material.BARRIER, "<#f38ba8><bold>Delete KillEffect</bold>", List.of(plugin.parse("<#a6adc8>Remove <#f9e2af>" + effectId + " <#a6adc8>from database."))));
-    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>| <#cdd6f4>Admin"));
+    inv.setItem(16, TrimMenuHolder.createResetButton(plugin, "<#f38ba8><bold>Delete KillEffect</bold>", List.of(
+        plugin.parse("<#a6adc8>ʀᴇᴍᴏᴠᴇ <#f9e2af>" + effectId + " <#a6adc8>ꜰʀᴏᴍ ᴅᴀᴛᴀʙᴀѕᴇ."))));
+    inv.setItem(18, TrimMenuHolder.createBackButton(plugin, "<#f9e2af><bold>Back</bold> <#6c7086>▪ <#cdd6f4>Admin"));
     player.openInventory(inv);
   }
 
@@ -418,7 +450,7 @@ public class KillEffectStudioGui implements Listener {
     int page = holder.getPage();
 
     if (type == TrimMenuHolder.MenuType.KILLEFFECT_STUDIO) {
-      if (slot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); DecorHubGui.open(plugin, player); return; }
+      if (slot == 45) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1f); KillEffectHubGui.open(plugin, player); return; }
       if (slot == 48 && page > 0) { player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.2f); openPlayerMenu(plugin, player, page - 1); return; }
       if (slot == 50) {
         ItemStack next = event.getCurrentItem();
@@ -660,6 +692,15 @@ public class KillEffectStudioGui implements Listener {
     }
   }
 
+  private String extractChatInput(AsyncChatEvent event) {
+    try {
+      if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
+        return event.signedMessage().message().trim();
+      }
+    } catch (Throwable ignored) {}
+    return PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
+  }
+
   @EventHandler(priority = EventPriority.LOWEST)
   public void onChatInput(AsyncChatEvent event) {
     Player player = event.getPlayer();
@@ -667,16 +708,7 @@ public class KillEffectStudioGui implements Listener {
 
     if (pendingCreateKillEffectGroupPlayers.remove(uuid)) {
       event.setCancelled(true);
-      String rawPerm = null;
-      try {
-        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
-          rawPerm = event.signedMessage().message().trim();
-        }
-      } catch (Throwable ignored) {}
-      if (rawPerm == null || rawPerm.isBlank()) {
-        rawPerm = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
-      }
-      final String finalPerm = rawPerm;
+      final String finalPerm = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (finalPerm.equalsIgnoreCase("cancel")) {
@@ -696,16 +728,7 @@ public class KillEffectStudioGui implements Listener {
 
     if (pendingAddKillEffectPlayers.remove(uuid)) {
       event.setCancelled(true);
-      String rawId = null;
-      try {
-        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
-          rawId = event.signedMessage().message().trim();
-        }
-      } catch (Throwable ignored) {}
-      if (rawId == null || rawId.isBlank()) {
-        rawId = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
-      }
-      final String finalId = rawId;
+      final String finalId = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (finalId.equalsIgnoreCase("cancel")) {
@@ -731,16 +754,7 @@ public class KillEffectStudioGui implements Listener {
     String editingNameEffectId = pendingKillEffectNameEdit.remove(uuid);
     if (editingNameEffectId != null) {
       event.setCancelled(true);
-      String rawInput = null;
-      try {
-        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
-          rawInput = event.signedMessage().message().trim();
-        }
-      } catch (Throwable ignored) {}
-      if (rawInput == null || rawInput.isBlank()) {
-        rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
-      }
-      final String finalInput = rawInput;
+      final String finalInput = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (finalInput.equalsIgnoreCase("cancel")) {
@@ -760,16 +774,7 @@ public class KillEffectStudioGui implements Listener {
     String editingLoreEffectId = pendingKillEffectLoreEdit.remove(uuid);
     if (editingLoreEffectId != null) {
       event.setCancelled(true);
-      String rawInput = null;
-      try {
-        if (event.signedMessage() != null && event.signedMessage().message() != null && !event.signedMessage().message().isBlank()) {
-          rawInput = event.signedMessage().message().trim();
-        }
-      } catch (Throwable ignored) {}
-      if (rawInput == null || rawInput.isBlank()) {
-        rawInput = PlainTextComponentSerializer.plainText().serialize(event.message()).trim();
-      }
-      final String finalInput = rawInput;
+      final String finalInput = extractChatInput(event);
       Bukkit.getScheduler().runTask(plugin, () -> {
         if (!player.isOnline()) return;
         if (finalInput.equalsIgnoreCase("cancel")) {
@@ -802,5 +807,6 @@ public class KillEffectStudioGui implements Listener {
     pendingCreateKillEffectGroupPlayers.remove(uuid);
     pendingKillEffectNameEdit.remove(uuid);
     pendingKillEffectLoreEdit.remove(uuid);
+    plugin.getKillEffectManager().cancelPlayerPreview(uuid);
   }
 }

@@ -1,0 +1,45 @@
+# Maven & Java build outputs
+target/
+build/
+out/
+.gradle/
+dependency-reduced-pom.xml
+*.jar
+*.war
+*.ear
+*.class
+*.log
+hs_err_pid*
+replay_pid*
+
+# Runtime data, database & secrets
+*.db
+*.sqlite
+*.sqlite3
+playerdata.yml
+.env
+.env.*
+
+# IDE & editor caches
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.settings/
+.project
+.classpath
+.factorypath
+*.swp
+*.swo
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Misc / auxiliary environments
+node_modules/
+__pycache__/
+.venv/

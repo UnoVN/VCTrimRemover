@@ -9,12 +9,15 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.Registry;
 import org.bukkit.Sound;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -37,6 +40,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class HatManager {
 
@@ -54,6 +58,9 @@ public class HatManager {
   private static final NamespacedKey ARMOR_MODIFIER_KEY = new NamespacedKey("antitrim", "helmet_armor");
   private static final NamespacedKey TOUGHNESS_MODIFIER_KEY = new NamespacedKey("antitrim", "helmet_toughness");
   private static final NamespacedKey KNOCKBACK_MODIFIER_KEY = new NamespacedKey("antitrim", "helmet_knockback");
+  private static final NamespacedKey HELMET_DAMAGE_KEY = new NamespacedKey("antitrim", "helmet_current_damage");
+  private static final NamespacedKey HELMET_MAX_DURABILITY_KEY = new NamespacedKey("antitrim", "helmet_max_durability");
+  private static final NamespacedKey HELMET_BASE_MATERIAL_KEY = new NamespacedKey("antitrim", "helmet_base_material");
 
   static {
     Method setItemModel = null, getEquippable = null, setEquippable = null, equipSetSlot = null, equipSetDmgOnHurt = null, itemSetData = null;
@@ -190,17 +197,29 @@ public class HatManager {
 
   public void restoreAllCustomHatsInInventory(Player player) {
     ItemStack cursor = player.getItemOnCursor();
-    if (isCustomHatItem(cursor)) player.setItemOnCursor(restoreOriginalHelmet(cursor));
+    if (isCustomHatItem(cursor)) {
+      ItemStack r = restoreOriginalHelmet(cursor);
+      player.setItemOnCursor(r == null || r.getType().isAir() ? null : r);
+    }
 
     ItemStack helmet = player.getInventory().getHelmet();
-    if (isCustomHatItem(helmet)) player.getInventory().setHelmet(restoreOriginalHelmet(helmet));
+    if (isCustomHatItem(helmet)) {
+      ItemStack r = restoreOriginalHelmet(helmet);
+      player.getInventory().setHelmet(r == null || r.getType().isAir() ? null : r);
+    }
 
     ItemStack offHand = player.getInventory().getItemInOffHand();
-    if (isCustomHatItem(offHand)) player.getInventory().setItemInOffHand(restoreOriginalHelmet(offHand));
+    if (isCustomHatItem(offHand)) {
+      ItemStack r = restoreOriginalHelmet(offHand);
+      player.getInventory().setItemInOffHand(r == null || r.getType().isAir() ? null : r);
+    }
 
     for (int i = 0; i < 36; i++) {
       ItemStack item = player.getInventory().getItem(i);
-      if (isCustomHatItem(item)) player.getInventory().setItem(i, restoreOriginalHelmet(item));
+      if (isCustomHatItem(item)) {
+        ItemStack r = restoreOriginalHelmet(item);
+        player.getInventory().setItem(i, r == null || r.getType().isAir() ? null : r);
+      }
     }
   }
 
@@ -288,6 +307,9 @@ public class HatManager {
   public NamespacedKey getPlayerHatKey() { return new NamespacedKey(plugin, "selected_nexo_hat"); }
   public NamespacedKey getItemAppliedHatKey() { return new NamespacedKey(plugin, "applied_nexo_hat"); }
   public NamespacedKey getOriginalHelmetBytesKey() { return new NamespacedKey(plugin, "original_helmet_bytes"); }
+  public NamespacedKey getHelmetDamageKey() { return HELMET_DAMAGE_KEY; }
+  public NamespacedKey getHelmetMaxDurabilityKey() { return HELMET_MAX_DURABILITY_KEY; }
+  public NamespacedKey getHelmetBaseMaterialKey() { return HELMET_BASE_MATERIAL_KEY; }
 
   public String getSavedPatternKey(Player p, EquipmentSlot s) { return p.getPersistentDataContainer().get(getPatternKey(s), PersistentDataType.STRING); }
   public String getSavedMaterialKey(Player p, EquipmentSlot s) { return p.getPersistentDataContainer().get(getMaterialKey(s), PersistentDataType.STRING); }
@@ -410,12 +432,24 @@ public class HatManager {
     hatMeta.addItemFlags(ItemFlag.values());
     try { hatMeta.setMaxStackSize(1); } catch (Throwable ignored) {}
 
-    hatMeta.setUnbreakable(cleanBaseMeta.isUnbreakable());
-    if (hatMeta instanceof Damageable hatDamageable && cleanBaseMeta instanceof Damageable baseDamageable) {
+    boolean isUnbreakable = cleanBaseMeta.isUnbreakable();
+    hatMeta.setUnbreakable(isUnbreakable);
+
+    int maxDurability = cleanBaseMeta instanceof Damageable baseDamageable && baseDamageable.hasMaxDamage()
+        ? baseDamageable.getMaxDamage()
+        : cleanBase.getType().getMaxDurability();
+    if (maxDurability <= 0) {
+      maxDurability = isNetherite ? 407 : 363;
+    }
+
+    int initialDamage = cleanBaseMeta instanceof Damageable baseDamageable
+        ? Math.max(0, baseDamageable.getDamage())
+        : 0;
+
+    if (hatMeta instanceof Damageable hatDamageable) {
       try {
-        int maxDurability = baseDamageable.hasMaxDamage() ? baseDamageable.getMaxDamage() : cleanBase.getType().getMaxDurability();
-        if (maxDurability > 0) hatDamageable.setMaxDamage(maxDurability);
-        hatDamageable.setDamage(Math.max(0, baseDamageable.getDamage()));
+        hatDamageable.setMaxDamage(maxDurability);
+        hatDamageable.setDamage(initialDamage);
       } catch (Throwable ignored) {}
     }
 
@@ -423,7 +457,7 @@ public class HatManager {
       if (GET_EQUIPPABLE_METHOD != null && SET_EQUIPPABLE_METHOD != null && EQUIP_SET_SLOT_METHOD != null) {
         Object equipComp = GET_EQUIPPABLE_METHOD.invoke(hatMeta);
         EQUIP_SET_SLOT_METHOD.invoke(equipComp, EquipmentSlot.HEAD);
-        if (EQUIP_SET_DAMAGE_ON_HURT_METHOD != null) EQUIP_SET_DAMAGE_ON_HURT_METHOD.invoke(equipComp, true);
+        if (EQUIP_SET_DAMAGE_ON_HURT_METHOD != null) EQUIP_SET_DAMAGE_ON_HURT_METHOD.invoke(equipComp, false);
         SET_EQUIPPABLE_METHOD.invoke(hatMeta, equipComp);
       }
     } catch (Throwable ignored) {}
@@ -436,10 +470,146 @@ public class HatManager {
 
     pdc.set(getOriginalHelmetBytesKey(), PersistentDataType.BYTE_ARRAY, serializedHelmet);
     pdc.set(getItemAppliedHatKey(), PersistentDataType.STRING, hatId);
+    pdc.set(HELMET_MAX_DURABILITY_KEY, PersistentDataType.INTEGER, maxDurability);
+    pdc.set(HELMET_DAMAGE_KEY, PersistentDataType.INTEGER, initialDamage);
+    pdc.set(HELMET_BASE_MATERIAL_KEY, PersistentDataType.STRING, cleanBase.getType().name());
 
     hatStack.setItemMeta(hatMeta);
     applyHiddenComponentTooltips(hatStack);
     return hatStack;
+  }
+
+  public int getCustomHatDamage(ItemStack hatItem) {
+    if (hatItem == null || !hatItem.hasItemMeta()) return 0;
+    ItemMeta meta = hatItem.getItemMeta();
+    Integer cur = meta.getPersistentDataContainer().get(HELMET_DAMAGE_KEY, PersistentDataType.INTEGER);
+    if (cur != null && cur >= 0) return cur;
+    if (meta instanceof Damageable dmg) return dmg.getDamage();
+    return 0;
+  }
+
+  public int getCustomHatMaxDurability(ItemStack hatItem) {
+    if (hatItem == null || !hatItem.hasItemMeta()) return 363;
+    ItemMeta meta = hatItem.getItemMeta();
+    Integer maxD = meta.getPersistentDataContainer().get(HELMET_MAX_DURABILITY_KEY, PersistentDataType.INTEGER);
+    if (maxD != null && maxD > 0) return maxD;
+    if (meta instanceof Damageable dmg && dmg.hasMaxDamage()) return dmg.getMaxDamage();
+    return isNetheriteCustomHat(hatItem) ? 407 : 363;
+  }
+
+  public String getCustomHatBaseMaterial(ItemStack hatItem) {
+    if (hatItem == null || !hatItem.hasItemMeta()) return "DIAMOND_HELMET";
+    String mat = hatItem.getItemMeta().getPersistentDataContainer().get(HELMET_BASE_MATERIAL_KEY, PersistentDataType.STRING);
+    return mat != null ? mat : "DIAMOND_HELMET";
+  }
+
+  public boolean isNetheriteCustomHat(ItemStack hatItem) {
+    return "NETHERITE_HELMET".equalsIgnoreCase(getCustomHatBaseMaterial(hatItem));
+  }
+
+  public void setCustomHatDamage(ItemStack hatItem, int damage) {
+    if (hatItem == null || !hatItem.hasItemMeta()) return;
+    ItemMeta meta = hatItem.getItemMeta();
+    meta.getPersistentDataContainer().set(HELMET_DAMAGE_KEY, PersistentDataType.INTEGER, Math.max(0, damage));
+    if (meta instanceof Damageable dmg) {
+      try {
+        Integer maxDur = meta.getPersistentDataContainer().get(HELMET_MAX_DURABILITY_KEY, PersistentDataType.INTEGER);
+        if (maxDur != null && maxDur > 0) {
+          dmg.setMaxDamage(maxDur);
+        }
+        dmg.setDamage(Math.max(0, damage));
+      } catch (Throwable ignored) {}
+    }
+    hatItem.setItemMeta(meta);
+  }
+
+  public void applyCombatDamageToHat(Player player, ItemStack helmet, EntityDamageEvent event) {
+    if (helmet == null || !isCustomHatItem(helmet)) return;
+    ItemMeta meta = helmet.getItemMeta();
+    if (meta != null && meta.isUnbreakable()) return;
+
+    EntityDamageEvent.DamageCause cause = event.getCause();
+    if (!isArmorDamagingCause(cause)) return;
+
+    // Check fire immunity for netherite helmet
+    boolean isFire = (cause == EntityDamageEvent.DamageCause.FIRE
+        || cause == EntityDamageEvent.DamageCause.FIRE_TICK
+        || cause == EntityDamageEvent.DamageCause.LAVA
+        || cause == EntityDamageEvent.DamageCause.HOT_FLOOR
+        || cause == EntityDamageEvent.DamageCause.CAMPFIRE);
+    if (isFire && isNetheriteCustomHat(helmet)) return;
+
+    // Calculate effective incoming damage considering shield blocking
+    double effectiveDamage = getEffectiveIncomingDamage(player, event);
+    if (effectiveDamage <= 0.0) return;
+
+    // Vanilla armor durability formula: (int) Math.max(1.0, damage / 4.0)
+    int armorDamage = (int) Math.max(1.0, effectiveDamage / 4.0);
+
+    // Vanilla Unbreaking formula for armor: chance = 0.6 + 0.4 / (level + 1)
+    int unbreaking = helmet.getEnchantmentLevel(Enchantment.UNBREAKING);
+    double chance = unbreaking <= 0 ? 1.0 : (0.6 + (0.4 / (unbreaking + 1.0)));
+
+    int durabilityLoss = 0;
+    for (int i = 0; i < armorDamage; i++) {
+      if (ThreadLocalRandom.current().nextDouble() < chance) {
+        durabilityLoss++;
+      }
+    }
+
+    // Check Thorns on helmet
+    if (event instanceof EntityDamageByEntityEvent) {
+      int thorns = helmet.getEnchantmentLevel(Enchantment.THORNS);
+      if (thorns > 0 && ThreadLocalRandom.current().nextDouble() < (thorns * 0.15)) {
+        for (int t = 0; t < 2; t++) {
+          if (ThreadLocalRandom.current().nextDouble() < chance) {
+            durabilityLoss++;
+          }
+        }
+      }
+    }
+
+    if (durabilityLoss <= 0) return;
+
+    int currentDamage = getCustomHatDamage(helmet);
+    int maxDurability = getCustomHatMaxDurability(helmet);
+    int newDamage = currentDamage + durabilityLoss;
+
+    if (newDamage >= maxDurability) {
+      // Helmet breaks!
+      player.getInventory().setHelmet(null);
+      player.getWorld().playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0f, 0.9f);
+      try {
+        player.spawnParticle(Particle.ITEM, player.getEyeLocation(), 15, 0.2, 0.2, 0.2, 0.05, helmet);
+      } catch (Throwable ignored) {}
+    } else {
+      setCustomHatDamage(helmet, newDamage);
+      player.getInventory().setHelmet(helmet);
+    }
+  }
+
+  public boolean isArmorDamagingCause(EntityDamageEvent.DamageCause cause) {
+    return switch (cause) {
+      case ENTITY_ATTACK, ENTITY_SWEEP_ATTACK, PROJECTILE,
+           BLOCK_EXPLOSION, ENTITY_EXPLOSION, FALLING_BLOCK,
+           LIGHTNING, THORNS, CONTACT, HOT_FLOOR,
+           FIRE, FIRE_TICK, LAVA, CAMPFIRE -> true;
+      default -> false;
+    };
+  }
+
+  private double getEffectiveIncomingDamage(Player player, EntityDamageEvent event) {
+    if (player.isBlocking() && event.getFinalDamage() <= 0.0) return 0.0;
+    double dmg = event.getDamage();
+    if (player.isBlocking()) {
+      try {
+        if (event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING)) {
+          double blockMod = event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
+          dmg += blockMod;
+        }
+      } catch (Throwable ignored) {}
+    }
+    return Math.max(0.0, dmg);
   }
 
   private boolean isCosmeticHatValid(ItemStack hatItem, String expectedHatId) {
@@ -461,10 +631,12 @@ public class HatManager {
 
     try {
       ItemStack restored = ItemStack.deserializeBytes(bytes);
-      if (hatMeta instanceof Damageable hatDmg && restored.getItemMeta() instanceof Damageable restoredDmg) {
-        int currentDamage = hatDmg.getDamage();
-        int maxDurability = restored.getType().getMaxDurability();
-        if (maxDurability > 0 && currentDamage >= maxDurability) return new ItemStack(Material.AIR);
+      int currentDamage = getCustomHatDamage(hatItem);
+      int maxDurability = restored.getType().getMaxDurability();
+      if (maxDurability <= 0) maxDurability = getCustomHatMaxDurability(hatItem);
+      if (maxDurability > 0 && currentDamage >= maxDurability) return new ItemStack(Material.AIR);
+
+      if (restored.getItemMeta() instanceof Damageable restoredDmg) {
         restoredDmg.setDamage(Math.max(0, currentDamage));
         restored.setItemMeta((ItemMeta) restoredDmg);
       }
@@ -488,7 +660,7 @@ public class HatManager {
       if (isExternalGuiOpen(player)) {
         if (isCustomHatItem(headItem)) {
           headItem = restoreOriginalHelmet(headItem);
-          player.getInventory().setHelmet(headItem);
+          player.getInventory().setHelmet(headItem == null || headItem.getType().isAir() ? null : headItem);
         }
       } else {
         String effectiveHat = getEffectiveHatId(player);
@@ -496,6 +668,10 @@ public class HatManager {
           if (isCustomHatItem(headItem)) {
             if (!isCosmeticHatValid(headItem, effectiveHat)) {
               ItemStack restored = restoreOriginalHelmet(headItem);
+              if (restored == null || restored.getType().isAir()) {
+                player.getInventory().setHelmet(null);
+                return;
+              }
               ItemStack updatedHat = createCosmeticHatFromHelmet(restored, effectiveHat);
               if (updatedHat != null) player.getInventory().setHelmet(updatedHat);
             }
@@ -506,7 +682,8 @@ public class HatManager {
             return;
           }
         } else if (isCustomHatItem(headItem)) {
-          player.getInventory().setHelmet(restoreOriginalHelmet(headItem));
+          ItemStack r = restoreOriginalHelmet(headItem);
+          player.getInventory().setHelmet(r == null || r.getType().isAir() ? null : r);
         }
       }
     }
@@ -530,10 +707,16 @@ public class HatManager {
   public void applyAllSavedTrims(Player player) {
     for (int i = 0; i < 36; i++) {
       ItemStack invItem = player.getInventory().getItem(i);
-      if (isCustomHatItem(invItem)) player.getInventory().setItem(i, restoreOriginalHelmet(invItem));
+      if (isCustomHatItem(invItem)) {
+        ItemStack r = restoreOriginalHelmet(invItem);
+        player.getInventory().setItem(i, r == null || r.getType().isAir() ? null : r);
+      }
     }
     ItemStack offHand = player.getInventory().getItemInOffHand();
-    if (isCustomHatItem(offHand)) player.getInventory().setItemInOffHand(restoreOriginalHelmet(offHand));
+    if (isCustomHatItem(offHand)) {
+      ItemStack r = restoreOriginalHelmet(offHand);
+      player.getInventory().setItemInOffHand(r == null || r.getType().isAir() ? null : r);
+    }
 
     applySavedTrimToSlot(player, EquipmentSlot.HEAD);
     applySavedTrimToSlot(player, EquipmentSlot.CHEST);
@@ -548,6 +731,10 @@ public class HatManager {
 
     String effectiveHat = getEffectiveHatId(player);
     ItemStack baseHelmet = isCustomHatItem(headItem) ? restoreOriginalHelmet(headItem) : headItem;
+    if (baseHelmet == null || baseHelmet.getType().isAir()) {
+      player.getInventory().setHelmet(null);
+      return;
+    }
 
     if (effectiveHat != null && isTargetHelmet(baseHelmet)) {
       ItemStack updatedHat = createCosmeticHatFromHelmet(baseHelmet, effectiveHat);
